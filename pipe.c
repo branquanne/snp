@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
         exit(1);
     } else if (pid == 0) {
         close(fd[READ_END]);
-        if (write(fd[WRITE_END], msg, sizeof(msg) + 1) == -1) {
+        if (write(fd[WRITE_END], msg, sizeof(msg)) == -1) {
             perror("write");
             exit(1);
         }
