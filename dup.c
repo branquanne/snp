@@ -14,6 +14,12 @@ int main(int argc, char *argv[]) {
 
     if (dup2(fd, STDOUT_FILENO) == -1) {
         perror("dup2");
+        close(fd);
         exit(1);
     }
+
+    printf("Ey wallah!");
+
+    close(fd);
+    exit(0);
 }
