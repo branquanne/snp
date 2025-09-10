@@ -25,6 +25,8 @@ char** parse_line(char* buffer) {
     return args;
 }
 
+void execute_command(char** args) { execvp(args[0], args); }
+
 int main(int argc, char* argv[]) {
     char line[256];
     printf("Write a command: ");
@@ -36,6 +38,11 @@ int main(int argc, char* argv[]) {
     char** args = parse_line(line);
     for (int i = 0; args[i] != NULL; i++) {
         printf("args[%d]: %s\n", i, args[i]);
+    }
+
+    execute_command(args);
+
+    for (int i = 0; args[i] != NULL; i++) {
         free(args[i]);
     }
     free(args);

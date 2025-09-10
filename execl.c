@@ -14,7 +14,7 @@ int main(void) {
         exit(1);
     } else if (pid == 0) {
         sleep(3);
-        if (execl("./argv", "hej", "yäni", "vgd?", (char*)0) < 0) {
+        if (execl("./argv", "hej", "yäni", "vgd?", NULL) < 0) {
             perror("EXEC");
             exit(1);
         }
