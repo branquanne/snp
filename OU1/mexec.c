@@ -5,8 +5,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#define MAX_LINE_SIZE 128
-#define MAX_NUMBER_OF_CMDS 4
+#define MAX_LINE_SIZE 1024
 
 static char** parseLine(char* buf) {
     int size = 8;
@@ -15,7 +14,8 @@ static char** parseLine(char* buf) {
         perror("args malloc");
         exit(EXIT_FAILURE);
     }
-    char* token = strtok(buf, " \t\n"); // Use the separator "new line" as specified
+    char* token =
+        strtok(buf, " \t\n");  // Use the separator "new line" as specified
 
     int i = 0;
     while (token != NULL) {
@@ -43,7 +43,8 @@ int main(int argc, char** argv) {
     FILE* in = stdin;
     char line[MAX_LINE_SIZE];
 
-    char*** cmds = malloc(MAX_NUMBER_OF_CMDS * sizeof(char**));
+    int size = 8;
+    char*** cmds = malloc(size * sizeof(char**));
     if (!cmds) {
         perror("cmds malloc");
         exit(EXIT_FAILURE);
@@ -63,9 +64,22 @@ int main(int argc, char** argv) {
     }
 
     while (fgets(line, sizeof(line), in)) {
-        if (n_cmds >= MAX_NUMBER_OF_CMDS) {
-            fprintf(stderr, "Too many commands!\n");
-            exit(EXIT_FAILURE);
+        char* temp = line;
+        while (*temp == ' ' || *temp == '\t' || *temp == '\n') {
+            temp++;
+        }
+
+        if (*temp == '\0') {
+            continue;
+        }
+
+        if (n_cmds >= size - 1) {
+            size *= 2;
+            cmds = realloc(cmds, size * sizeof(char**));
+            if (!cmds) {
+                perror("cmds realloc");
+                exit(EXIT_FAILURE);
+            }
         }
         cmds[n_cmds++] = parseLine(line);
     }
@@ -73,7 +87,7 @@ int main(int argc, char** argv) {
         fclose(in);
     }
 
-    int pipes[MAX_NUMBER_OF_CMDS - 1][2];
+    int pipes[size - 1][2];
     for (int i = 0; i < n_cmds - 1; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("pipe");
@@ -81,7 +95,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    pid_t pids[MAX_NUMBER_OF_CMDS];
+    pid_t pids[size];
     for (int i = 0; i < n_cmds; i++) {
         pids[i] = fork();
         if (pids[i] == -1) {
@@ -103,10 +117,8 @@ int main(int argc, char** argv) {
             }
 
             execvp(cmds[i][0], cmds[i]);
-            if (!cmds[i][0]) {
-                perror("execvp");
-                exit(EXIT_FAILURE);
-            }
+            perror("execvp");
+            exit(EXIT_FAILURE);
         }
     }
 
