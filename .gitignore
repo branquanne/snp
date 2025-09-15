@@ -1,0 +1,14 @@
+# Ignore everything
+*
+
+# But not these...
+!*.c
+!*/
+!*.pdf
+!.gitignore
+!makefile
+!.clang-format
+
+
+# Ignore folders ending with .dSYM
+*.dSYM/
