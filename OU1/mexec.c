@@ -3,7 +3,7 @@
 
 void close_pipes(int pipes[][2], int n_pipes);
 int setup_pipes(int pipes[][2], int n_pipes);
-int wait_status(pid_t pids[], int n_cmds, int* fail);
+int wait_for_children(pid_t pids[], int n_cmds, int* fail);
 int fork_children(char*** cmds, int n_cmds, int pipes[][2], pid_t pids[]);
 
 int main(int argc, char** argv) {
@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     }
 
     int fail = 0;
-    if (wait_status(pids, n_cmds, &fail) != 0) {
+    if (wait_for_children(pids, n_cmds, &fail) != 0) {
         perror("Waitpid");
         free_cmds(cmds, n_cmds);
         exit(EXIT_FAILURE);
@@ -74,11 +74,7 @@ int fork_children(char*** cmds, int n_cmds, int pipes[][2], pid_t pids[]) {
                 dup2(pipes[i][1], STDOUT_FILENO);
             }
 
-            for (int j = 0; j < n_cmds - 1; j++) {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
-            }
-
+            close_pipes(pipes, n_cmds - 1);
             execvp(cmds[i][0], cmds[i]);
             perror("execvp");
             exit(EXIT_FAILURE);
@@ -92,8 +88,7 @@ int fork_children(char*** cmds, int n_cmds, int pipes[][2], pid_t pids[]) {
     return 0;
 }
 
-int wait_status(pid_t pids[], int n_cmds, int* fail) {
-
+int wait_for_children(pid_t pids[], int n_cmds, int* fail) {
     int status = 0;
     for (int i = 0; i < n_cmds; i++) {
         if (waitpid(pids[i], &status, 0) == -1) {
