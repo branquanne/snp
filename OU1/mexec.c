@@ -11,6 +11,7 @@ int main(int argc, char** argv) {
     char*** cmds = parse_args(argv, argc, &size, &n_cmds);
     if (n_cmds <= 0 || cmds == NULL) {
         fprintf(stderr, "No commands parsed\n");
+        free_cmds(cmds, n_cmds);
         exit(EXIT_FAILURE);
     }
 
