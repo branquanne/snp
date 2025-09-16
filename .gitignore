@@ -9,6 +9,7 @@
 !.gitignore
 !makefile
 !.clang-format
+!in_file
 
 
 # Ignore folders ending with .dSYM
