@@ -1,106 +1,69 @@
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "parse.h"
 #include <sys/wait.h>
-#include <unistd.h>
 
-#define MAX_LINE_SIZE 1024
-
-static char** parseLine(char* buf) {
-    int size = 8;
-    char** args = malloc(size * sizeof(char*));
-    if (!args) {
-        perror("args malloc");
-        exit(EXIT_FAILURE);
-    }
-    char* token =
-        strtok(buf, " \t\n");  // Use the separator "new line" as specified
-
-    int i = 0;
-    while (token != NULL) {
-        if (i >= size - 1) {
-            size *= 2;
-            args = realloc(args, size * sizeof(char*));
-            if (!args) {
-                perror("args realloc");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        args[i++] = strdup(token);
-        if (!args[i - 1]) {
-            perror("args strdup");
-            exit(EXIT_FAILURE);
-        }
-        token = strtok(NULL, " \t\n");
-    }
-    args[i] = NULL;
-    return args;
-}
+void close_pipes(int pipes[][2], int n_pipes);
+int setup_pipes(int pipes[][2], int n_pipes);
+int wait_status(pid_t pids[], int n_cmds, int* fail);
+int fork_children(char*** cmds, int n_cmds, int pipes[][2], pid_t pids[]);
 
 int main(int argc, char** argv) {
-    FILE* in = stdin;
-    char line[MAX_LINE_SIZE];
-
-    int size = 8;
-    char*** cmds = malloc(size * sizeof(char**));
-    if (!cmds) {
-        perror("cmds malloc");
+    int size = 8, n_cmds = 0;
+    char*** cmds = parse_args(argv, argc, &size, &n_cmds);
+    if (n_cmds <= 0 || cmds == NULL) {
+        fprintf(stderr, "No commands parsed\n");
         exit(EXIT_FAILURE);
     }
-    int n_cmds = 0;
 
-    if (argc > 2) {
-        fprintf(stderr, "Usage: %s [file]\n", argv[0]);
+    int pipes[n_cmds - 1][2];
+    if (setup_pipes(pipes, n_cmds) != 0) {
+        free_cmds(cmds, n_cmds);
         exit(EXIT_FAILURE);
     }
-    if (argc == 2) {
-        in = fopen(argv[1], "r");
-        if (!in) {
-            perror("in fopen");
-            exit(EXIT_FAILURE);
-        }
+
+    pid_t pids[n_cmds];
+    if (fork_children(cmds, n_cmds, pipes, pids) != 0) {
+        free_cmds(cmds, n_cmds);
+        exit(EXIT_FAILURE);
     }
 
-    while (fgets(line, sizeof(line), in)) {
-        char* temp = line;
-        while (*temp == ' ' || *temp == '\t' || *temp == '\n') {
-            temp++;
-        }
-
-        if (*temp == '\0') {
-            continue;
-        }
-
-        if (n_cmds >= size - 1) {
-            size *= 2;
-            cmds = realloc(cmds, size * sizeof(char**));
-            if (!cmds) {
-                perror("cmds realloc");
-                exit(EXIT_FAILURE);
-            }
-        }
-        cmds[n_cmds++] = parseLine(line);
-    }
-    if (in != stdin) {
-        fclose(in);
+    int fail = 0;
+    if (wait_status(pids, n_cmds, &fail) != 0) {
+        perror("Waitpid");
+        free_cmds(cmds, n_cmds);
+        exit(EXIT_FAILURE);
     }
 
-    int pipes[size - 1][2];
-    for (int i = 0; i < n_cmds - 1; i++) {
+    free_cmds(cmds, n_cmds);
+
+    return fail ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+void close_pipes(int pipes[][2], int n_pipes) {
+    for (int i = 0; i < n_pipes; i++) {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+}
+
+int setup_pipes(int pipes[][2], int n_pipes) {
+    for (int i = 0; i < n_pipes - 1; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("pipe");
-            exit(EXIT_FAILURE);
+            close_pipes(pipes, i);
+            return 1;
         }
     }
+    return 0;
+}
 
-    pid_t pids[size];
+int fork_children(char*** cmds, int n_cmds, int pipes[][2], pid_t pids[]) {
     for (int i = 0; i < n_cmds; i++) {
         pids[i] = fork();
         if (pids[i] == -1) {
             perror("fork");
-            exit(EXIT_FAILURE);
+            close_pipes(pipes, n_cmds - 1);
+
+            return 1;
         }
 
         if (pids[i] == 0) {
@@ -126,25 +89,20 @@ int main(int argc, char** argv) {
         close(pipes[i][0]);
         close(pipes[i][1]);
     }
+    return 0;
+}
 
-    int status, fail = 0;
+int wait_status(pid_t pids[], int n_cmds, int* fail) {
+
+    int status = 0;
     for (int i = 0; i < n_cmds; i++) {
         if (waitpid(pids[i], &status, 0) == -1) {
             perror("waitpid");
-            exit(EXIT_FAILURE);
+            return 1;
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-            fail = 1;
+            *fail = 1;
         }
     }
-
-    for (int i = 0; i < n_cmds; i++) {
-        for (int j = 0; cmds[i][j] != NULL; j++) {
-            free(cmds[i][j]);
-        }
-        free(cmds[i]);
-    }
-    free(cmds);
-
-    return fail ? EXIT_FAILURE : EXIT_SUCCESS;
+    return 0;
 }
