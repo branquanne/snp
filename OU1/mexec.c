@@ -97,6 +97,7 @@ int wait_for_children(pid_t pids[], int n_cmds, int* fail) {
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
             *fail = 1;
+            return 1;
         }
     }
     return 0;
