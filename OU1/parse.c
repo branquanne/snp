@@ -1,4 +1,8 @@
 #include "parse.h"
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 void free_args(char** args, int n_args);
 
@@ -35,7 +39,7 @@ char** parse_line(char* buf) {
     return args;
 }
 
-char*** parse_args(char** buf, int argc, int* size, int* n_cmds) {
+char*** parse_commands(char** buf, int argc, int* size, int* n_cmds) {
     FILE* in = stdin;
     char line[MAX_LINE_SIZE];
 
