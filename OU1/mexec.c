@@ -1,37 +1,32 @@
 #include "mexec.h"
 #include "parse.h"
-#include <errno.h>
 #include <stdio.h>
-#include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 int main(int argc, char** argv) {
     int size = 8, n_cmds = 0;
-    char*** cmds = parse_args(argv, argc, &size, &n_cmds);
+    char*** cmds = parse_commands(argv, argc, &size, &n_cmds);
     if (n_cmds <= 0 || cmds == NULL) {
         fprintf(stderr, "No commands parsed\n");
-        free_cmds(cmds, n_cmds);
-        exit(EXIT_FAILURE);
+        cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
     }
 
-    int pipes[n_cmds - 1][2];
-    if (setup_pipes(pipes, n_cmds) != 0) {
-        free_cmds(cmds, n_cmds);
-        exit(EXIT_FAILURE);
+    int n_pipes = n_cmds > 1 ? n_cmds - 1 : 0;
+    int pipes[n_pipes][2];
+    if (n_pipes > 0 && n_pipes != 0) {
+        cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
     }
 
     pid_t pids[n_cmds];
-    if (fork_children(cmds, n_cmds, pipes, pids) != 0) {
-        free_cmds(cmds, n_cmds);
-        exit(EXIT_FAILURE);
+    if (fork_children(cmds, n_cmds, pipes, n_pipes, pids) != 0) {
+        cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
     }
 
     int fail = 0;
     if (wait_for_children(pids, n_cmds, &fail) != 0) {
         perror("Waitpid");
-        free_cmds(cmds, n_cmds);
-        exit(EXIT_FAILURE);
+        cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
     }
 
     free_cmds(cmds, n_cmds);
@@ -49,7 +44,7 @@ void close_pipes(int pipes[][2], int n_pipes) {
 }
 
 int setup_pipes(int pipes[][2], int n_pipes) {
-    for (int i = 0; i < n_pipes - 1; i++) {
+    for (int i = 0; i < n_pipes; i++) {
         if (pipe(pipes[i]) == -1) {
             perror("pipe");
             close_pipes(pipes, i);
@@ -59,13 +54,12 @@ int setup_pipes(int pipes[][2], int n_pipes) {
     return 0;
 }
 
-int fork_children(char*** cmds, int n_cmds, int pipes[][2], pid_t pids[]) {
+int fork_children(char*** cmds, int n_cmds, int pipes[][2], int n_pipes, pid_t pids[]) {
     for (int i = 0; i < n_cmds; i++) {
         pids[i] = fork();
         if (pids[i] == -1) {
             perror("fork");
-            close_pipes(pipes, n_cmds - 1);
-
+            close_pipes(pipes, n_pipes);
             return 1;
         }
 
@@ -73,21 +67,16 @@ int fork_children(char*** cmds, int n_cmds, int pipes[][2], pid_t pids[]) {
             if (i > 0) {
                 dup2(pipes[i - 1][0], STDIN_FILENO);
             }
-            if (i < n_cmds - 1) {
+            if (i < n_pipes) {
                 dup2(pipes[i][1], STDOUT_FILENO);
             }
-
-            close_pipes(pipes, n_cmds - 1);
+            close_pipes(pipes, n_pipes);
             execvp(cmds[i][0], cmds[i]);
             perror("execvp");
             exit(EXIT_FAILURE);
         }
     }
-
-    for (int i = 0; i < n_cmds - 1; i++) {
-        close(pipes[i][0]);
-        close(pipes[i][1]);
-    }
+    close_pipes(pipes, n_pipes);
     return 0;
 }
 
@@ -104,4 +93,9 @@ int wait_for_children(pid_t pids[], int n_cmds, int* fail) {
         }
     }
     return 0;
+}
+
+void cleanup_and_exit(char*** cmds, int n_cmds, int code) {
+    free_cmds(cmds, n_cmds);
+    exit(code);
 }
