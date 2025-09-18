@@ -6,7 +6,7 @@
 
 int main(int argc, char** argv) {
     int size = 8, n_cmds = 0;
-    char*** cmds = parse_commands(argv, argc, &size, &n_cmds);
+    char*** cmds = parse_cmds(argv, argc, &size, &n_cmds);
     if (n_cmds <= 0 || cmds == NULL) {
         fprintf(stderr, "No commands parsed\n");
         cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);

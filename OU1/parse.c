@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-void free_args(char** args, int n_args);
+void free_line(char** args, int n_args);
 
 char** parse_line(char* buf) {
     int size = 8;
@@ -21,7 +21,7 @@ char** parse_line(char* buf) {
             args = realloc(args, size * sizeof(char*));
             if (!args) {
                 perror("args realloc");
-                free_args(args, i);
+                free_line(args, i);
                 exit(EXIT_FAILURE);
             }
         }
@@ -29,7 +29,7 @@ char** parse_line(char* buf) {
         args[i++] = strdup(token);
         if (!args[i - 1]) {
             perror("args strdup");
-            free_args(args, i);
+            free_line(args, i);
             exit(EXIT_FAILURE);
         }
         token = strtok(NULL, " \t\n");
@@ -38,7 +38,7 @@ char** parse_line(char* buf) {
     return args;
 }
 
-char*** parse_commands(char** buf, int argc, int* size, int* n_cmds) {
+char*** parse_cmds(char** buf, int argc, int* size, int* n_cmds) {
     FILE* in = stdin;
     char line[MAX_LINE_SIZE];
 
@@ -89,7 +89,7 @@ char*** parse_commands(char** buf, int argc, int* size, int* n_cmds) {
     return cmds;
 }
 
-void free_args(char** args, int n_args) {
+void free_line(char** args, int n_args) {
     for (int i = 0; i < n_args; i++) {
         free(args[i]);
     }
