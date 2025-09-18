@@ -1,9 +1,21 @@
+
 #include "parse.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void free_line(char** args, int n_args);
+/**
+ * @file parse.c
+ * @brief Functions for parsing command lines and freeing memory.
+ *
+ * This file provides functions to:
+ * - Split a line of text into arguments (parse_line)
+ * - Read and parse multiple commands from stdin or a file (parse_cmds)
+ * - Free memory used for argument arrays (free_line)
+ * - Free memory used for command arrays (free_cmds)
+ *
+ * Used by mexec.c to prepare commands for execution.
+ */
 
 char** parse_line(char* buf) {
     int size = 8;
@@ -12,7 +24,7 @@ char** parse_line(char* buf) {
         perror("args malloc");
         exit(EXIT_FAILURE);
     }
-    char* token = strtok(buf, " \t\n"); // Use the separator "new line" as specified
+    char* token = strtok(buf, " \t\n");
 
     int i = 0;
     while (token != NULL) {
