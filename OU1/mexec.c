@@ -15,6 +15,9 @@
  *
  * Usage:
  *   ./mexec [filename]
+ * Or:
+ *   ./mexec
+ *
  * If a filename is given, commands are read from the file; otherwise, from standard input.
  *
  * Each command is executed in its own process. If multiple commands are given,
