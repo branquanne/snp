@@ -18,10 +18,10 @@
  * Or:
  *   ./mexec
  *
- * If a filename is given, commands are read from the file; otherwise, from standard input.
+ * If a filename is given, commands are read from the file, otherwise they're read from standard input.
  *
  * Each command is executed in its own process. If multiple commands are given,
- * they are connected in a pipeline (the output of one is the input of the next).
+ * they are connected in a pipe.
  */
 
 int setup_pipes(int pipes[][2], int n_pipes);
@@ -112,7 +112,7 @@ void close_pipes(int pipes[][2], int n_pipes) {
  * @param n_cmds Number of commands.
  * @param pipes Array of pipes.
  * @param n_pipes Number of pipes.
- * @param pids Array to store child process IDs.
+ * @param pids Array to store child pids.
  * @return 0 on success, 1 on error.
  */
 int fork_children(char*** cmds, int n_cmds, int pipes[][2], int n_pipes, pid_t pids[]) {
@@ -145,7 +145,7 @@ int fork_children(char*** cmds, int n_cmds, int pipes[][2], int n_pipes, pid_t p
  * Waits for all child processes to finish.
  * Sets *fail to 1 if any child fails.
  *
- * @param pids Array of child process IDs.
+ * @param pids Array of child pids.
  * @param n_cmds Number of children.
  * @param fail Pointer to int, set to 1 if any child fails.
  * @return 0 if all succeed, 1 if any fail.

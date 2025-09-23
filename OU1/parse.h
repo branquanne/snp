@@ -4,7 +4,7 @@
 #define MAX_LINE_SIZE 1024
 
 /**
- * @brief Splits a line into arguments using whitespace as separators.
+ * @brief Splits a line into arguments using space as a separator.
  *
  * Allocates and returns an array of strings, one for each argument.
  * The last element is set to NULL.
@@ -20,10 +20,10 @@ char** parse_line(char* buf);
  * Allocates and returns an array of command argument arrays.
  * Each command is split into arguments using parse_line.
  *
- * @param buf Command-line arguments (argv).
+ * @param buf Command-line arguments.
  * @param argc Number of command-line arguments.
- * @param size Pointer to the initial size of the command array (may be updated).
- * @param n_cmds Pointer to the number of commands found (updated).
+ * @param size Pointer to the initial size of the command array.
+ * @param n_cmds Pointer to the number of commands found.
  * @return Array of command argument arrays.
  */
 char*** parse_cmds(char** buf, int argc, int* size, int* n_cmds);

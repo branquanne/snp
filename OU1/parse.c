@@ -14,7 +14,9 @@
  * - Free memory used for argument arrays (free_line)
  * - Free memory used for command arrays (free_cmds)
  *
- * Used by mexec.c to prepare commands for execution.
+ * Used by mexec.c.
+ *
+ * Further documentation for the following functions is found in parse.h.
  */
 
 char** parse_line(char* buf) {
