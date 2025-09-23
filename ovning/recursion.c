@@ -10,7 +10,6 @@ int factorial(int n) {
 }
 
 int main(void) {
-
     int i = factorial(5);
     printf("%d\n", i);
 
