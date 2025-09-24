@@ -14,3 +14,4 @@
 
 # Ignore folders ending with .dSYM
 *.dSYM/
+*.vscode/

@@ -75,7 +75,6 @@ int main(int argc, char** argv) {
 }
 
 void build_target(makefile* mf, const char* target, bool force_rebuild, bool silent) {
-    printf("Looking for target: %s\n", target);
     rule* rule = makefile_rule(mf, target);
     if (!rule) {
         struct stat source_stat;
@@ -95,10 +94,11 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
     bool needs_rebuild = force_rebuild || target_is_outdated(target, prereqs);
     if (needs_rebuild) {
         char** cmds = rule_cmd(rule);
-        for (int i = 0; cmds[i]; i++) {
-            if (!silent) {
-                printf("Running command: %s\n", cmds[i]);
+        if (!silent) {
+            for (int i = 0; cmds[i]; i++) {
+                printf("%s ", cmds[i]);
             }
+            printf("\n");
         }
         run_command(cmds);
     }
