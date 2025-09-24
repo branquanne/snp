@@ -9,7 +9,7 @@
 
 void build_target(makefile* mf, const char* target, bool force_rebuild, bool silent);
 bool target_is_outdated(const char* target, const char** prereqs);
-void run_command(const char* cmd);
+void run_command(char** cmds);
 static void usage(void);
 
 int main(int argc, char** argv) {
@@ -75,8 +75,13 @@ int main(int argc, char** argv) {
 }
 
 void build_target(makefile* mf, const char* target, bool force_rebuild, bool silent) {
+    printf("Looking for target: %s\n", target);
     rule* rule = makefile_rule(mf, target);
     if (!rule) {
+        struct stat source_stat;
+        if (stat(target, &source_stat) == 0) {
+            return;
+        }
         fprintf(stderr, "Could not extract rules\n");
         exit(EXIT_FAILURE);
     }
@@ -94,8 +99,8 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
             if (!silent) {
                 printf("Running command: %s\n", cmds[i]);
             }
-            run_command(cmds[i]);
         }
+        run_command(cmds);
     }
 }
 
@@ -122,7 +127,7 @@ bool target_is_outdated(const char* target, const char** prereqs) {
     return false;
 }
 
-void run_command(const char* cmd) {
+void run_command(char** cmds) {
     pid_t pid = fork();
 
     if (pid == -1) {
@@ -130,8 +135,8 @@ void run_command(const char* cmd) {
         exit(EXIT_FAILURE);
     }
     if (pid == 0) {
-        execvp("/bin/sh", (char*[]) { "/bin/sh", "-c", (char*)cmd, NULL });
-        fprintf(stderr, "Failed to execute: %s\n", cmd);
+        execvp(cmds[0], (char* const*)cmds);
+        fprintf(stderr, "Failed to execute: %s\n", cmds[0]);
         exit(EXIT_FAILURE);
     } else {
         int status;
@@ -140,7 +145,7 @@ void run_command(const char* cmd) {
             exit(EXIT_FAILURE);
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-            fprintf(stderr, "Command failed: %s\n", cmd);
+            fprintf(stderr, "Command failed: %s\n", cmds[0]);
             exit(EXIT_FAILURE);
         }
     }
