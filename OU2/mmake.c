@@ -48,7 +48,6 @@ int main(int argc, char** argv) {
     if (!mf) {
         fprintf(stderr, "Could not parse mmakefile\n");
         fclose(fp);
-        makefile_del(mf);
         exit(EXIT_FAILURE);
     }
 
@@ -65,12 +64,6 @@ int main(int argc, char** argv) {
         target = makefile_default_target(mf);
         build_target(mf, target, force_rebuild, silent);
     }
-
-    // Traverse rules
-
-    // Check prereqs
-
-    // Run commands to build revursively
 
     makefile_del(mf);
     return 0;
@@ -90,8 +83,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
 
     const char** prereqs = rule_prereq(rule);
     for (int i = 0; prereqs[i]; i++) {
-        target = prereqs[i];
-        build_target(mf, target, force_rebuild, silent);
+        build_target(mf, prereqs[i], force_rebuild, silent);
     }
 
     bool needs_rebuild = force_rebuild || target_is_outdated(target, prereqs);
@@ -99,7 +91,10 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
         char** cmds = rule_cmd(rule);
         if (!silent) {
             for (int i = 0; cmds[i]; i++) {
-                printf("%s ", cmds[i]);
+                printf("%s", cmds[i]);
+                if (cmds[i + 1]) {
+                    printf(" ");
+                }
             }
             printf("\n");
         }
@@ -122,11 +117,6 @@ bool target_is_outdated(const char* target, const char** prereqs) {
             return true;
         }
     }
-
-    if (time(NULL) - target_stat.st_mtime > 1) {
-        return true;
-    }
-
     return false;
 }
 
@@ -151,7 +141,6 @@ void run_command(char** cmds, makefile* mf) {
             exit(EXIT_FAILURE);
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-            fprintf(stderr, "Command failed: %s\n", cmds[0]);
             makefile_del(mf);
             exit(EXIT_FAILURE);
         }
