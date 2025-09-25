@@ -9,7 +9,7 @@
 
 void build_target(makefile* mf, const char* target, bool force_rebuild, bool silent);
 bool target_is_outdated(const char* target, const char** prereqs);
-void run_command(char** cmds);
+void run_command(char** cmds, makefile* mf);
 static void usage(void);
 
 int main(int argc, char** argv) {
@@ -47,6 +47,8 @@ int main(int argc, char** argv) {
     makefile* mf = parse_makefile(fp);
     if (!mf) {
         fprintf(stderr, "Could not parse mmakefile\n");
+        fclose(fp);
+        makefile_del(mf);
         exit(EXIT_FAILURE);
     }
 
@@ -82,6 +84,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
             return;
         }
         fprintf(stderr, "Could not extract rules\n");
+        makefile_del(mf);
         exit(EXIT_FAILURE);
     }
 
@@ -100,7 +103,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
             }
             printf("\n");
         }
-        run_command(cmds);
+        run_command(cmds, mf);
     }
 }
 
@@ -127,25 +130,29 @@ bool target_is_outdated(const char* target, const char** prereqs) {
     return false;
 }
 
-void run_command(char** cmds) {
+void run_command(char** cmds, makefile* mf) {
     pid_t pid = fork();
 
     if (pid == -1) {
         fprintf(stderr, "Unable to fork processID: %d\n", pid);
+        makefile_del(mf);
         exit(EXIT_FAILURE);
     }
     if (pid == 0) {
         execvp(cmds[0], (char* const*)cmds);
         fprintf(stderr, "Failed to execute: %s\n", cmds[0]);
+        makefile_del(mf);
         exit(EXIT_FAILURE);
     } else {
         int status;
         if (wait(&status) == -1) {
             fprintf(stderr, "Failed to wait for child process\n");
+            makefile_del(mf);
             exit(EXIT_FAILURE);
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
             fprintf(stderr, "Command failed: %s\n", cmds[0]);
+            makefile_del(mf);
             exit(EXIT_FAILURE);
         }
     }
