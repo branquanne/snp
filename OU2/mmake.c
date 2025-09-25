@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
     }
 
     makefile_del(mf);
-    return 0;
+    exit(EXIT_SUCCESS);
 }
 
 void build_target(makefile* mf, const char* target, bool force_rebuild, bool silent) {
