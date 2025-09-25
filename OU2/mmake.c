@@ -40,13 +40,13 @@ int main(int argc, char** argv) {
 
     FILE* fp = fopen(mmakefile_name, "r");
     if (!fp) {
-        fprintf(stderr, "Could not open %s\n", mmakefile_name);
+        perror(mmakefile_name);
         exit(EXIT_FAILURE);
     }
 
     makefile* mf = parse_makefile(fp);
     if (!mf) {
-        fprintf(stderr, "Could not parse mmakefile\n");
+        perror(mmakefile_name);
         fclose(fp);
         exit(EXIT_FAILURE);
     }
@@ -73,12 +73,11 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
     rule* rule = makefile_rule(mf, target);
     if (!rule) {
         struct stat source_stat;
-        if (stat(target, &source_stat) == 0) {
-            return;
+        if (stat(target, &source_stat) != 0) {
+            fprintf(stderr, "Could not extract rules\n");
+            makefile_del(mf);
+            exit(EXIT_FAILURE);
         }
-        fprintf(stderr, "Could not extract rules\n");
-        makefile_del(mf);
-        exit(EXIT_FAILURE);
     }
 
     const char** prereqs = rule_prereq(rule);
@@ -130,7 +129,7 @@ void run_command(char** cmds, makefile* mf) {
     }
     if (pid == 0) {
         execvp(cmds[0], (char* const*)cmds);
-        fprintf(stderr, "Failed to execute: %s\n", cmds[0]);
+        perror(cmds[0]);
         makefile_del(mf);
         exit(EXIT_FAILURE);
     } else {
