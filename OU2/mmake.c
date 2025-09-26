@@ -78,6 +78,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
             makefile_del(mf);
             exit(EXIT_FAILURE);
         }
+        return;
     }
 
     const char** prereqs = rule_prereq(rule);
