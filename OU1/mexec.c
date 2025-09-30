@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
         cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
     }
 
-    int n_pipes = n_cmds > 1 ? n_cmds - 1 : 0; // If there are no commands, no pipes are needed
+    int n_pipes = n_cmds > 1 ? n_cmds - 1 : 0;
     int pipes[n_pipes][2];
     if (n_pipes > 0 && setup_pipes(pipes, n_pipes) != 0) {
         cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
 
     int fail = 0;
     if (wait_for_children(pids, n_cmds, &fail) != 0) {
-        perror("Waitpid");
+        perror("waitpid failed");
         cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
     }
 
@@ -134,6 +134,7 @@ int fork_children(char*** cmds, int n_cmds, int pipes[][2], int n_pipes, pid_t p
             close_pipes(pipes, n_pipes);
             execvp(cmds[i][0], cmds[i]);
             perror("execvp");
+            free_cmds(cmds, n_cmds);
             exit(EXIT_FAILURE);
         }
     }
@@ -157,7 +158,16 @@ int wait_for_children(pid_t pids[], int n_cmds, int* fail) {
             perror("waitpid");
             return 1;
         }
-        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        if (WIFEXITED(status)) {
+            int exit_status = WEXITSTATUS(status);
+            if (exit_status != 0) {
+                fprintf(stderr, "Child process %d exited with status %d\n", i, exit_status);
+                *fail = 1;
+                return 1;
+            }
+        } else if (WIFSIGNALED(status)) {
+            int signal = WTERMSIG(status);
+            fprintf(stderr, "Child process %d terminated by signal %d\n", i, signal);
             *fail = 1;
             return 1;
         }
