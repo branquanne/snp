@@ -70,7 +70,7 @@ char*** parse_cmds(char** buf, int argc, int* size, int* n_cmds) {
     if (argc == 2) {
         in = fopen(buf[1], "r");
         if (!in) {
-            perror("in fopen");
+            perror(buf[1]);
             free_cmds(cmds, *n_cmds);
             exit(EXIT_FAILURE);
         }

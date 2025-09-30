@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
     }
 
     int fail = 0;
-    if (wait_for_children(pids, n_cmds, &fail) != 0) {
+    if (wait_for_children(pids, n_cmds, &fail) == -1) {
         perror("waitpid failed");
         cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
     }
@@ -126,16 +126,23 @@ int fork_children(char*** cmds, int n_cmds, int pipes[][2], int n_pipes, pid_t p
 
         if (pids[i] == 0) {
             if (i > 0) {
-                dup2(pipes[i - 1][0], STDIN_FILENO);
+                int status_in = dup2(pipes[i - 1][0], STDIN_FILENO);
+                if (status_in == -1) {
+                    perror("dup2 stdin");
+                    cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
+                }
             }
             if (i < n_pipes) {
-                dup2(pipes[i][1], STDOUT_FILENO);
+                int status_out = dup2(pipes[i][1], STDOUT_FILENO);
+                if (status_out == -1) {
+                    perror("dup2 stdout");
+                    cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
+                }
             }
             close_pipes(pipes, n_pipes);
             execvp(cmds[i][0], cmds[i]);
             perror("execvp");
-            free_cmds(cmds, n_cmds);
-            exit(EXIT_FAILURE);
+            cleanup_and_exit(cmds, n_cmds, EXIT_FAILURE);
         }
     }
     close_pipes(pipes, n_pipes);
@@ -157,17 +164,8 @@ int wait_for_children(pid_t pids[], int n_cmds, int* fail) {
         if (waitpid(pids[i], &status, 0) == -1) {
             perror("waitpid");
             return 1;
-        }
-        if (WIFEXITED(status)) {
-            int exit_status = WEXITSTATUS(status);
-            if (exit_status != 0) {
-                fprintf(stderr, "Child process %d exited with status %d\n", i, exit_status);
-                *fail = 1;
-                return 1;
-            }
-        } else if (WIFSIGNALED(status)) {
-            int signal = WTERMSIG(status);
-            fprintf(stderr, "Child process %d terminated by signal %d\n", i, signal);
+        } else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+            fprintf(stderr, "Child process %d exited with status %d\n", i, WEXITSTATUS(status));
             *fail = 1;
             return 1;
         }
