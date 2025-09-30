@@ -164,7 +164,8 @@ int wait_for_children(pid_t pids[], int n_cmds, int* fail) {
         if (waitpid(pids[i], &status, 0) == -1) {
             perror("waitpid");
             return 1;
-        } else if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        }
+        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
             fprintf(stderr, "Child process %d exited with status %d\n", i, WEXITSTATUS(status));
             *fail = 1;
             return 1;
