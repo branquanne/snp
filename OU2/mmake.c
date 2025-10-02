@@ -80,7 +80,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
         }
         return;
     }
-
+    // TODO: Fix error handling in the event of no prereqs being able to be extracted.
     const char** prereqs = rule_prereq(rule);
     for (int i = 0; prereqs[i]; i++) {
         build_target(mf, prereqs[i], force_rebuild, silent);
