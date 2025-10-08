@@ -1,10 +1,5 @@
 #include "dirsize.h"
-#include "utils.h"
 #include "work_queue.h"
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
 
 static void usage() {
     fprintf(stderr, "Usage: mdu [-j number_of_threads] file ...\n");
@@ -20,11 +15,10 @@ int main(int argc, char** argv) {
         switch (flag) {
         case 'j':
             num_threads = atoi(optarg);
-            if (num_threads < 2) {
+            if (num_threads < 1) {
                 fprintf(stderr, "Number of specified threads must be greater than 1\n");
                 usage();
             }
-
             break;
         default:
             usage();
@@ -39,7 +33,11 @@ int main(int argc, char** argv) {
 
     for (int i = optind; i < argc; i++) {
         char* filename = argv[i];
-        printf("Processing %s with %d threads\n", filename, num_threads);
+
+        size_t total_size = calculate_dir_size(filename);
+        size_t blocks = (total_size + 511) / 512;
+
+        printf("%zu\t%s\n", filename, num_threads);
     }
 
     return EXIT_SUCCESS;
