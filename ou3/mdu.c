@@ -1,3 +1,6 @@
+#include "dirsize.h"
+#include "utils.h"
+#include "work_queue.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
