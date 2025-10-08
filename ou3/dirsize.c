@@ -1,8 +1,15 @@
 #include "dirsize.h"
+#include "work_queue.h"
+
+struct thread_args {
+    work_queue_t* queue;
+    size_t* total_size;
+    pthread_mutex_t* size_mutex;
+};
 
 size_t calculate_dir_size(const char* path) {
     struct stat file_stat;
-    if (stat(path, &file_stat) == -1) {
+    if (lstat(path, &file_stat) == -1) {
         perror(path);
         return 0;
     }
@@ -56,4 +63,7 @@ size_t calculate_dir_size(const char* path) {
 
     // Return the total accumulated size of all directory contents
     return total_size;
+}
+
+size_t process_directory(const char* path, bool use_threads, int num_threads) {
 }
