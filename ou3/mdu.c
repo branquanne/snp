@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
         switch (flag) {
         case 'j':
             num_threads = atoi(optarg);
-            if (num_threads < 1) {
+            if (num_threads < 2) {
                 fprintf(stderr, "Number of specified threads must be greater than 1\n");
                 usage();
             }
