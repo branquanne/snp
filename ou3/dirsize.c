@@ -37,7 +37,7 @@ static void* worker_func(void* arg) {
                 continue;
             }
             struct dirent* entry;
-            while (entry = readdir(dir) != NULL) {
+            while ((entry = readdir(dir)) != NULL) {
                 if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
                     continue;
                 }
@@ -55,9 +55,9 @@ static void* worker_func(void* arg) {
         work_queue_task_done(queue);
     }
 
-    pthread_mutex_lock(&args->size_mutex);
+    pthread_mutex_lock(args->size_mutex);
     *(args->total_size) += local_size;
-    pthread_mutex_unlock(&args->size_mutex);
+    pthread_mutex_unlock(args->size_mutex);
 
     return NULL;
 }
@@ -89,7 +89,7 @@ size_t calculate_dir_size(const char* path) {
     struct dirent* entry;
 
     // Loop through each entry in the directory using readdir
-    while (entry = readdir(dir) != NULL) {
+    while ((entry = readdir(dir)) != NULL) {
         // Skip the current directory entry "."
         // Skip the parent directory entry ".."
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
@@ -130,6 +130,4 @@ size_t process_directory(const char* path, bool use_threads, int num_threads) {
         fprintf(stderr, "Failed to create work queue!\n");
         return NULL;
     }
-
-    
 }

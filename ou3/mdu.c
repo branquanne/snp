@@ -1,5 +1,4 @@
 #include "dirsize.h"
-#include "work_queue.h"
 
 static void usage() {
     fprintf(stderr, "Usage: mdu [-j number_of_threads] file ...\n");
@@ -37,7 +36,7 @@ int main(int argc, char** argv) {
         size_t total_size = calculate_dir_size(filename);
         size_t blocks = (total_size + 511) / 512;
 
-        printf("%zu\t%s\n", filename, num_threads);
+        printf("%s\t%d\n", filename, num_threads);
     }
 
     return EXIT_SUCCESS;

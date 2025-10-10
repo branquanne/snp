@@ -1,5 +1,7 @@
 #include "work_queue.h"
 
+void free_pq(work_queue_t* queue);
+
 struct work_queue {
     char** paths;
     size_t capacity;
@@ -32,13 +34,13 @@ work_queue_t* work_queue_create(void) {
     queue->front = 0;
 
     if (pthread_mutex_init(&queue->mutex, NULL) != 0) {
-        perror(queue);
+        perror("queue");
         free_pq(queue);
         return NULL;
     }
 
     if (pthread_cond_init(&queue->condition, NULL) != 0) {
-        perror(queue);
+        perror("queue");
         pthread_mutex_destroy(&queue->mutex);
         free_pq(queue);
     }
@@ -104,7 +106,7 @@ void work_queue_task_done(work_queue_t* queue) {
 }
 
 bool work_queue_is_empty(work_queue_t* queue) {
-    pthread_lock_mutex(&queue->mutex);
+    pthread_mutex_lock(&queue->mutex);
 
     bool is_empty = (queue->size == 0);
     pthread_mutex_unlock(&queue->mutex);
