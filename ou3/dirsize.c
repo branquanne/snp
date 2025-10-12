@@ -1,5 +1,7 @@
 #include "dirsize.h"
 #include "work_queue.h"
+#include <stddef.h>
+#include <string.h>
 
 struct thread_args {
     work_queue_t* queue;
@@ -27,7 +29,7 @@ static void* worker_func(void* arg) {
         }
 
         if (S_ISREG(file_stat.st_mode)) {
-            local_size += file_stat.st_size;
+            local_size += file_stat.st_blocks * 512;
         } else if (S_ISDIR(file_stat.st_mode)) {
             DIR* dir = opendir(path);
             if (!dir) {
@@ -47,7 +49,7 @@ static void* worker_func(void* arg) {
                     fprintf(stderr, "Filepath too long!\n");
                     continue;
                 }
-                work_queue_push(queue, path);
+                work_queue_push(queue, full_path);
             }
             closedir(dir);
         }
@@ -70,7 +72,7 @@ size_t calculate_dir_size(const char* path) {
     }
 
     if (S_ISREG(file_stat.st_mode)) {
-        return file_stat.st_size;
+        return file_stat.st_blocks * 512;
     }
 
     if (!S_ISDIR(file_stat.st_mode)) {
@@ -121,13 +123,36 @@ size_t calculate_dir_size(const char* path) {
 }
 
 size_t process_directory(const char* path, bool use_threads, int num_threads) {
-    if (!use_threads || num_threads <= 1) {
-        return calculate_dir_size(path);
-    }
-
+    (void)use_threads; // Suppress unused parameter warning
     work_queue_t* queue = work_queue_create();
     if (!queue) {
         fprintf(stderr, "Failed to create work queue!\n");
-        return NULL;
+        return 0;
     }
+
+    work_queue_push(queue, path);
+
+    size_t total_size = 0;
+    pthread_mutex_t size_mutex;
+    pthread_mutex_init(&size_mutex, NULL);
+
+    pthread_t threads[num_threads];
+    struct thread_args args = { queue, &total_size, &size_mutex };
+
+    for (int i = 0; i < num_threads; i++) {
+        int ret = pthread_create(&threads[i], NULL, worker_func, &args);
+        if (ret != 0) {
+            fprintf(stderr, "pthread_create: %s\n", strerror(ret));
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    for (int i = 0; i < num_threads; i++) {
+        pthread_join(threads[i], NULL);
+    }
+
+    pthread_mutex_destroy(&size_mutex);
+    work_queue_destroy(queue);
+
+    return total_size;
 }
