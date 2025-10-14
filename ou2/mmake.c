@@ -74,7 +74,8 @@ int main(int argc, char** argv) {
 
     makefile* mf = parse_makefile(fp);
     if (!mf) {
-        perror(mmakefile_name);
+        fprintf("Could not parse makefile: %s\n", mmakefile_name);
+        // perror(mmakefile_name);
         fclose(fp);
         exit(EXIT_FAILURE);
     }
@@ -187,7 +188,7 @@ void run_command(char** cmds, makefile* mf) {
     pid_t pid = fork();
 
     if (pid == -1) {
-        fprintf(stderr, "Unable to fork processID: %d\n", pid);
+        perror("fork");
         cleanup_and_exit(mf, EXIT_FAILURE);
     }
     if (pid == 0) {
@@ -197,7 +198,7 @@ void run_command(char** cmds, makefile* mf) {
     } else {
         int status;
         if (wait(&status) == -1) {
-            fprintf(stderr, "Failed to wait for child process\n");
+            perror("Wait");
             cleanup_and_exit(mf, EXIT_FAILURE);
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
