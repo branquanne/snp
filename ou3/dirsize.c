@@ -1,14 +1,36 @@
+/**
+ * @file dirsize.c
+ * @brief Implements directory size calculation using a thread-safe work queue.
+ *
+ * This file provides functions to recursively calculate the size of directories,
+ * optionally using multiple threads for parallel traversal.
+ */
+
 #include "dirsize.h"
 #include "work_queue.h"
 #include <stddef.h>
 #include <string.h>
 
+/**
+ * @struct thread_args
+ * @brief Arguments passed to worker threads.
+ */
 struct thread_args {
     work_queue_t* queue;
     size_t* total_size;
     pthread_mutex_t* size_mutex;
 };
 
+/**
+ * @brief Worker thread function for processing paths from the work queue.
+ *
+ * Pops paths from the queue, calculates their size, and pushes subdirectories
+ * back onto the queue for further processing. Accumulates the size in a local
+ * variable and updates the shared total_size at the end.
+ *
+ * @param arg Pointer to thread_args structure.
+ * @return NULL
+ */
 static void* worker_func(void* arg) {
     struct thread_args* args = (struct thread_args*)arg;
     work_queue_t* queue = args->queue;
@@ -64,6 +86,14 @@ static void* worker_func(void* arg) {
     return NULL;
 }
 
+/**
+ * @brief Recursively calculates the size of a directory (single-threaded).
+ *
+ * Traverses the directory tree and sums the sizes of all regular files.
+ *
+ * @param path Path to the directory or file.
+ * @return Total size in bytes.
+ */
 size_t calculate_dir_size(const char* path) {
     struct stat file_stat;
     if (lstat(path, &file_stat) == -1) {
@@ -79,27 +109,19 @@ size_t calculate_dir_size(const char* path) {
         return 0;
     }
 
-    // Open the directory for reading
-    // Check if opendir failed and handle error appropriately
     DIR* dir = opendir(path);
     if (!dir) {
         perror(path);
     }
 
-    // Initialize total size counter to accumulate directory contents
     size_t total_size = 0;
     struct dirent* entry;
 
-    // Loop through each entry in the directory using readdir
     while ((entry = readdir(dir)) != NULL) {
-        // Skip the current directory entry "."
-        // Skip the parent directory entry ".."
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
 
-        // Construct the full path by combining current path with entry name
-        // Check if the constructed path exceeds maxidmum path length
         char full_path[PATH_MAX];
         int ret = snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
         if (ret >= (int)sizeof(full_path)) {
@@ -107,23 +129,29 @@ size_t calculate_dir_size(const char* path) {
             continue;
         }
 
-        // Recursively call calculate_dir_size on the full path
-        // Add the returned size to our total size accumulator
         total_size += calculate_dir_size(full_path);
     }
-    // End of directory traversal loop
 
-    // Close the directory and check for errors
     if (closedir(dir) == -1) {
         perror(path);
     }
 
-    // Return the total accumulated size of all directory contents
     return total_size;
 }
 
+/**
+ * @brief Calculates the size of a directory, optionally using multiple threads.
+ *
+ * Initializes a work queue and spawns worker threads to process directory entries
+ * in parallel. The total size is accumulated and returned.
+ *
+ * @param path Path to the directory.
+ * @param use_threads Unused parameter (for compatibility).
+ * @param num_threads Number of worker threads to use.
+ * @return Total size in bytes.
+ */
 size_t process_directory(const char* path, bool use_threads, int num_threads) {
-    (void)use_threads; // Suppress unused parameter warning
+    (void)use_threads;
     work_queue_t* queue = work_queue_create();
     if (!queue) {
         fprintf(stderr, "Failed to create work queue!\n");

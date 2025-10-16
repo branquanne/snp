@@ -1,11 +1,34 @@
+/**
+ * @file mdu.c
+ * @brief Main program for multi-threaded disk usage calculation.
+ *
+ * This program calculates the disk usage (in 512-byte blocks) of specified files or directories.
+ * It supports parallel traversal using multiple threads.
+ */
+
 #include "dirsize.h"
 #include <stddef.h>
 
+/**
+ * @brief Prints usage information and exits the program.
+ *
+ * This function displays the correct command-line usage and terminates the program.
+ */
 static void usage(void) {
     fprintf(stderr, "Usage: mdu [-j number_of_threads] file ...\n");
     exit(EXIT_FAILURE);
 }
 
+/**
+ * @brief Entry point for the mdu program.
+ *
+ * Parses command-line arguments, determines the number of threads to use,
+ * and calculates disk usage for each specified file or directory.
+ *
+ * @param argc Argument count.
+ * @param argv Argument vector.
+ * @return EXIT_SUCCESS on success, exits on error.
+ */
 int main(int argc, char** argv) {
 
     int num_threads = 1;
@@ -38,7 +61,6 @@ int main(int argc, char** argv) {
         if (num_threads > 1) {
             total_size = process_directory(filename, true, num_threads);
         } else {
-
             total_size = calculate_dir_size(filename);
         }
 
