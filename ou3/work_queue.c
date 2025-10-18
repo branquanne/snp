@@ -93,11 +93,20 @@ void work_queue_push(work_queue_t* queue, const char* path) {
     pthread_mutex_lock(&queue->mutex);
 
     if (queue->size >= queue->capacity) {
-        queue->capacity *= 2;
-        queue->paths = realloc(queue->paths, queue->capacity * sizeof(char*));
+        const size_t temp_capacity = queue->capacity * 2;
+        char **temp = realloc(queue->paths, temp_capacity * sizeof(char*));
+        if (!temp) {
+            perror("Could not reallocate queue->paths");
+            pthread_mutex_unlock(&queue->mutex);
+            return;
+        }
+
+        queue->paths = temp;
+        queue->capacity = temp_capacity;
+
     }
 
-    size_t index = (queue->front + queue->size) % queue->capacity;
+    const size_t index = (queue->front + queue->size) % queue->capacity;
     queue->paths[index] = strdup(path);
     queue->size++;
 
