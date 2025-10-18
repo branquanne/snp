@@ -54,6 +54,7 @@ work_queue_t* work_queue_create(void) {
     queue->paths = malloc(queue->capacity * sizeof(char*));
     if (!queue->paths) {
         fprintf(stderr, "Could not allocate memory for paths");
+        free(queue);
         return NULL;
     }
 
@@ -70,6 +71,7 @@ work_queue_t* work_queue_create(void) {
         perror("queue");
         pthread_mutex_destroy(&queue->mutex);
         free_pq(queue);
+        return NULL;
     }
 
     queue->active_threads = 0;
