@@ -8,13 +8,15 @@
  */
 
 #include "work_queue.h"
+#include <stdatomic.h>
+#include <unistd.h> // For usleep
 
 /**
  * @brief Frees the memory allocated for the work queue structure.
  *
  * @param queue Pointer to the work queue to free.
  */
-void free_pq(work_queue_t* queue);
+static void free_pq(work_queue_t* queue);
 
 /**
  * @struct work_queue
@@ -34,6 +36,7 @@ struct work_queue {
     int active_threads;
     int total_threads;
     bool terminate;
+    atomic_int outstanding; /* tracks pushed items not yet finished */
 };
 
 /**
@@ -46,14 +49,14 @@ struct work_queue {
 work_queue_t* work_queue_create(void) {
     work_queue_t* queue = malloc(sizeof(work_queue_t));
     if (!queue) {
-        fprintf(stderr, "Could not allocate memory for queue");
+        fprintf(stderr, "Could not allocate memory for queue\n");
         return NULL;
     }
 
-    queue->capacity = 16;
+    queue->capacity = 1024;
     queue->paths = malloc(queue->capacity * sizeof(char*));
     if (!queue->paths) {
-        fprintf(stderr, "Could not allocate memory for paths");
+        fprintf(stderr, "Could not allocate memory for paths\n");
         free(queue);
         return NULL;
     }
@@ -77,6 +80,7 @@ work_queue_t* work_queue_create(void) {
     queue->active_threads = 0;
     queue->total_threads = 0;
     queue->terminate = false;
+    atomic_init(&queue->outstanding, 0);
 
     return queue;
 }
@@ -90,27 +94,54 @@ work_queue_t* work_queue_create(void) {
  * @param path String path to add (copied internally).
  */
 void work_queue_push(work_queue_t* queue, const char* path) {
+    if (!queue || !path)
+        return;
+
     pthread_mutex_lock(&queue->mutex);
 
-    if (queue->size >= queue->capacity) {
+    int retries = 0;
+    while (queue->size >= queue->capacity && retries < 10) {
         const size_t temp_capacity = queue->capacity * 2;
-        char** temp = realloc(queue->paths, temp_capacity * sizeof(char*));
-        if (!temp) {
-            perror("Could not reallocate queue->paths");
+        if (temp_capacity < queue->capacity) { // Overflow check
+            fprintf(stderr, "Capacity overflow\n");
             pthread_mutex_unlock(&queue->mutex);
             return;
         }
-
+        char** temp = malloc(temp_capacity * sizeof(char*));
+        if (!temp) {
+            retries++;
+            usleep(1000 * retries); // Exponential backoff
+            continue;
+        }
+        // Copy elements in correct order
+        for (size_t i = 0; i < queue->size; ++i) {
+            temp[i] = queue->paths[(queue->front + i) % queue->capacity];
+        }
+        free(queue->paths);
         queue->paths = temp;
         queue->capacity = temp_capacity;
+        queue->front = 0;
+        break;
+    }
+
+    if (retries >= 10) {
+        fprintf(stderr, "Failed to realloc after 10 retries, skipping push\n");
+        pthread_mutex_unlock(&queue->mutex);
+        return;
     }
 
     const size_t index = (queue->front + queue->size) % queue->capacity;
-    queue->paths[index] = strdup(path);
+    char* dup = strdup(path);
+    if (!dup) {
+        perror("strdup");
+        pthread_mutex_unlock(&queue->mutex);
+        return;
+    }
+    queue->paths[index] = dup;
     queue->size++;
+    atomic_fetch_add(&queue->outstanding, 1);
 
     pthread_cond_signal(&queue->condition);
-
     pthread_mutex_unlock(&queue->mutex);
 }
 
@@ -123,6 +154,10 @@ void work_queue_push(work_queue_t* queue, const char* path) {
  * @return Dynamically allocated string path, or NULL if terminating.
  */
 char* work_queue_pop(work_queue_t* queue) {
+    if (!queue) {
+        return NULL;
+    }
+
     pthread_mutex_lock(&queue->mutex);
 
     while (queue->size == 0 && !queue->terminate) {
@@ -137,7 +172,6 @@ char* work_queue_pop(work_queue_t* queue) {
     char* path = queue->paths[queue->front];
     queue->front = (queue->front + 1) % queue->capacity;
     queue->size--;
-
     queue->active_threads++;
 
     pthread_mutex_unlock(&queue->mutex);
@@ -153,11 +187,15 @@ char* work_queue_pop(work_queue_t* queue) {
  * @param queue Pointer to the work queue.
  */
 void work_queue_task_done(work_queue_t* queue) {
-    pthread_mutex_lock(&queue->mutex);
+    if (!queue)
+        return;
 
+    int prev = atomic_fetch_sub(&queue->outstanding, 1);
+
+    pthread_mutex_lock(&queue->mutex);
     queue->active_threads--;
 
-    if (queue->active_threads == 0 && queue->size == 0) {
+    if (prev - 1 == 0) {
         queue->terminate = true;
         pthread_cond_broadcast(&queue->condition);
     }
@@ -172,6 +210,9 @@ void work_queue_task_done(work_queue_t* queue) {
  * @return true if empty, false otherwise.
  */
 bool work_queue_is_empty(work_queue_t* queue) {
+    if (!queue)
+        return true;
+
     pthread_mutex_lock(&queue->mutex);
 
     bool is_empty = (queue->size == 0);
@@ -213,7 +254,10 @@ void work_queue_destroy(work_queue_t* queue) {
  *
  * @param queue Pointer to the work queue to free.
  */
-void free_pq(work_queue_t* queue) {
-    free(queue->paths);
+static void free_pq(work_queue_t* queue) {
+    if (!queue)
+        return;
+    if (queue->paths)
+        free(queue->paths);
     free(queue);
 }

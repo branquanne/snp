@@ -50,9 +50,11 @@ static void* worker_func(void* arg) {
             continue;
         }
 
-        if (S_ISREG(file_stat.st_mode)) {
-            local_size += file_stat.st_blocks * 512;
-        } else if (S_ISDIR(file_stat.st_mode)) {
+        if (S_ISREG(file_stat.st_mode) || S_ISDIR(file_stat.st_mode)) {
+            local_size += file_stat.st_blocks;
+        }
+
+        if (S_ISDIR(file_stat.st_mode)) {
             DIR* dir = opendir(path);
             if (!dir) {
                 perror(path);
@@ -101,22 +103,22 @@ size_t calculate_dir_size(const char* path) {
         return 0;
     }
 
-    if (S_ISREG(file_stat.st_mode)) {
-        return file_stat.st_blocks * 512;
+    size_t total_size = 0;
+    if (S_ISREG(file_stat.st_mode) || S_ISDIR(file_stat.st_mode)) {
+        total_size += file_stat.st_blocks;
     }
 
     if (!S_ISDIR(file_stat.st_mode)) {
-        return 0;
+        return total_size;
     }
 
     DIR* dir = opendir(path);
     if (!dir) {
         perror(path);
+        return total_size;
     }
 
-    size_t total_size = 0;
     struct dirent* entry;
-
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;

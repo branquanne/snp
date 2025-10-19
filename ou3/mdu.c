@@ -64,8 +64,7 @@ int main(int argc, char** argv) {
             total_size = calculate_dir_size(filename);
         }
 
-        size_t blocks = (total_size + 511) / 512;
-
+        size_t blocks = total_size; // st_blocks is already in 512-byte blocks
         printf("%zu\t%s\n", blocks, filename);
     }
 
