@@ -59,12 +59,13 @@ int main(int argc, char** argv) {
         size_t total_size = 0;
 
         if (num_threads > 1) {
-            total_size = process_directory(filename, true, num_threads);
+            total_size = process_directory(filename,  num_threads);
         } else {
             total_size = calculate_dir_size(filename);
         }
+        
 
-        size_t blocks = total_size; // st_blocks is already in 512-byte blocks
+        size_t blocks = total_size;
         printf("%zu\t%s\n", blocks, filename);
     }
 

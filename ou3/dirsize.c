@@ -152,8 +152,7 @@ size_t calculate_dir_size(const char* path) {
  * @param num_threads Number of worker threads to use.
  * @return Total size in bytes.
  */
-size_t process_directory(const char* path, bool use_threads, int num_threads) {
-    (void)use_threads;
+size_t process_directory(const char* path, int num_threads) {
     work_queue_t* queue = work_queue_create();
     if (!queue) {
         fprintf(stderr, "Failed to create work queue!\n");
