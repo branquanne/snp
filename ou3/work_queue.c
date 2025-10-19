@@ -94,7 +94,7 @@ void work_queue_push(work_queue_t* queue, const char* path) {
 
     if (queue->size >= queue->capacity) {
         const size_t temp_capacity = queue->capacity * 2;
-        char **temp = realloc(queue->paths, temp_capacity * sizeof(char*));
+        char** temp = realloc(queue->paths, temp_capacity * sizeof(char*));
         if (!temp) {
             perror("Could not reallocate queue->paths");
             pthread_mutex_unlock(&queue->mutex);
@@ -103,7 +103,6 @@ void work_queue_push(work_queue_t* queue, const char* path) {
 
         queue->paths = temp;
         queue->capacity = temp_capacity;
-
     }
 
     const size_t index = (queue->front + queue->size) % queue->capacity;
@@ -130,7 +129,7 @@ char* work_queue_pop(work_queue_t* queue) {
         pthread_cond_wait(&queue->condition, &queue->mutex);
     }
 
-    if (queue->size == 0 && !queue->terminate) {
+    if (queue->size == 0) {
         pthread_mutex_unlock(&queue->mutex);
         return NULL;
     }
