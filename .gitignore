@@ -1,0 +1,26 @@
+# Ignore everything
+*
+
+# Allow directories
+!ou1/
+!ou2/
+!ou3/
+
+# Allow only specific files and types
+!*.c
+!*.h
+!*.sh
+!.clang-format
+!.gitignore
+!README.md
+!makefile
+!mmakefile
+
+# Ignore unwanted files explicitly
+*.o
+*.pdf
+.DS_Store
+.vscode/
+*.json
+performance_results.txt
+in_file
