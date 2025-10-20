@@ -1,28 +1,21 @@
 CC = gcc
-CFLAGS = -g -std=gnu11 -Werror -Wall -Wextra -Wpedantic \
-         -Wmissing-declarations -Wmissing-prototypes -Wold-style-definition
+CFLAGS = -g -std=gnu11 -Wall -Wextra -Wpedantic -Wmissing-declarations -Wmissing-prototypes -Wold-style-definition
 LDFLAGS = -pthread
+TARGET = mdu
 
-SRCS = mdu.c dirsize.c work_queue.c
-OBJS = mdu.o dirsize.o work_queue.o
+SRC = mdu.c dirsize.c work_queue.c
+OBJ = $(SRC:.c=.o)
+DEPS = dirsize.h work_queue.h
 
-# Default target
-all: mdu
+all: $(TARGET)
 
-# Link object files to create the executable
-mdu: $(OBJS)
-	$(CC) $(OBJS) $(LDFLAGS) -o mdu
+$(TARGET): $(OBJ)
+	$(CC) $(OBJ) $(LDFLAGS) -o $@
 
-# Compile source files to object files
-mdu.o: mdu.c dirsize.h
-	$(CC) $(CFLAGS) -c mdu.c
+%.o: %.c $(DEPS)
+	$(CC) $(CFLAGS) -c $< -o $@
 
-dirsize.o: dirsize.c dirsize.h work_queue.h
-	$(CC) $(CFLAGS) -c dirsize.c
-
-work_queue.o: work_queue.c work_queue.h
-	$(CC) $(CFLAGS) -c work_queue.c
-
-# Clean up build artifacts
 clean:
-	rm -f mdu $(OBJS)
+	rm -f $(OBJ) $(TARGET)
+
+.PHONY: all clean

@@ -6,42 +6,49 @@
 #include "work_queue.h"
 #include <errno.h>
 
-#define INITIAL_CAPACITY 1024
+/* --- INTERNAL --- */
 
 /**
  * @struct work_queue
  * @brief Internal structure representing the work queue.
  */
 struct work_queue {
-    char** paths; // Circular buffer of path strings
-    int front; // Index of first element
-    int rear; // Index of next free slot
-    int size; // Current number of elements
-    int capacity; // Buffer capacity
-    int outstanding; // Number of unfinished tasks
-    pthread_mutex_t mutex; // Protects all queue fields
-    pthread_cond_t cond; // Signals queue state changes
+    char **paths;          /**< Circular buffer of path strings */
+    int front;             /**< Index of first element */
+    int rear;              /**< Index of next free slot */
+    int size;              /**< Current number of elements */
+    int capacity;          /**< Buffer capacity */
+    int outstanding;       /**< Number of unfinished tasks */
+    pthread_mutex_t mutex; /**< Protects all queue fields */
+    pthread_cond_t cond;   /**< Signals queue state changes */
 };
 
 /**
  * @brief Frees remaining paths in the queue (helper function).
+ * @param queue The work queue.
  */
-static void free_remaining_paths(work_queue_t* queue) {
+static void free_remaining_paths(work_queue_t *queue) {
     for (int i = 0; i < queue->size; i++) {
         free(queue->paths[(queue->front + i) % queue->capacity]);
     }
     free(queue->paths);
 }
 
-work_queue_t* work_queue_create(void) {
-    work_queue_t* queue = malloc(sizeof(work_queue_t));
+/* --- EXTERNAL --- */
+
+/**
+ * @brief Creates a new work queue.
+ * @return Pointer to the created queue, exits on failure.
+ */
+work_queue_t *queue_create(void) {
+    work_queue_t *queue = malloc(sizeof(work_queue_t));
     if (!queue) {
         perror("malloc");
         exit(EXIT_FAILURE);
     }
 
-    queue->capacity = INITIAL_CAPACITY;
-    queue->paths = malloc(sizeof(char*) * queue->capacity);
+    queue->capacity = 1024;
+    queue->paths = malloc(sizeof(char *) * queue->capacity);
     if (!queue->paths) {
         perror("malloc");
         free(queue);
@@ -69,20 +76,23 @@ work_queue_t* work_queue_create(void) {
     return queue;
 }
 
-void work_queue_push(work_queue_t* queue, const char* path) {
+/**
+ * @brief Adds a path to the work queue.
+ * @param queue Work queue.
+ * @param path Path string (will be copied).
+ */
+void queue_push(work_queue_t *queue, const char *path) {
     pthread_mutex_lock(&queue->mutex);
 
-    // Expand buffer if full
     if (queue->size == queue->capacity) {
         int new_capacity = queue->capacity * 2;
-        char** new_paths = malloc(sizeof(char*) * new_capacity);
+        char **new_paths = malloc(sizeof(char *) * new_capacity);
         if (!new_paths) {
             perror("malloc");
             pthread_mutex_unlock(&queue->mutex);
             exit(EXIT_FAILURE);
         }
 
-        // Copy elements in order to new buffer
         for (int i = 0; i < queue->size; i++) {
             new_paths[i] = queue->paths[(queue->front + i) % queue->capacity];
         }
@@ -94,7 +104,6 @@ void work_queue_push(work_queue_t* queue, const char* path) {
         queue->rear = queue->size;
     }
 
-    // Add new path
     queue->paths[queue->rear] = strdup(path);
     if (!queue->paths[queue->rear]) {
         perror("strdup");
@@ -110,10 +119,14 @@ void work_queue_push(work_queue_t* queue, const char* path) {
     pthread_mutex_unlock(&queue->mutex);
 }
 
-char* work_queue_pop(work_queue_t* queue) {
+/**
+ * @brief Retrieves a path from the work queue.
+ * @param queue Work queue.
+ * @return Dynamically allocated path string, or NULL if done.
+ */
+char *queue_pop(work_queue_t *queue) {
     pthread_mutex_lock(&queue->mutex);
 
-    // Wait for work or termination
     while (queue->size == 0) {
         if (queue->outstanding == 0) {
             pthread_cond_broadcast(&queue->cond);
@@ -123,7 +136,7 @@ char* work_queue_pop(work_queue_t* queue) {
         pthread_cond_wait(&queue->cond, &queue->mutex);
     }
 
-    char* path = queue->paths[queue->front];
+    char *path = queue->paths[queue->front];
     queue->front = (queue->front + 1) % queue->capacity;
     queue->size--;
 
@@ -131,7 +144,11 @@ char* work_queue_pop(work_queue_t* queue) {
     return path;
 }
 
-void work_queue_task_done(work_queue_t* queue) {
+/**
+ * @brief Signals completion of a task.
+ * @param queue Work queue.
+ */
+void queue_task_done(work_queue_t *queue) {
     pthread_mutex_lock(&queue->mutex);
     queue->outstanding--;
 
@@ -142,7 +159,11 @@ void work_queue_task_done(work_queue_t* queue) {
     pthread_mutex_unlock(&queue->mutex);
 }
 
-void work_queue_destroy(work_queue_t* queue) {
+/**
+ * @brief Destroys the work queue and frees resources.
+ * @param queue Work queue.
+ */
+void queue_destroy(work_queue_t *queue) {
     pthread_mutex_destroy(&queue->mutex);
     pthread_cond_destroy(&queue->cond);
     free_remaining_paths(queue);
