@@ -2,17 +2,18 @@
  * @file mdu.c
  * @brief Main program for multi-threaded disk usage calculation.
  *
- * This program calculates the disk usage (in 512-byte blocks) of specified files or directories.
- * It supports parallel traversal using multiple threads.
+ * This program calculates the disk usage (in 512-byte blocks) of specified
+ * files or directories. It supports parallel traversal using multiple threads.
  */
 
 #include "dirsize.h"
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 /**
- * @brief Prints usage information and exits the program.
- *
- * This function displays the correct command-line usage and terminates the program.
+ * @brief Prints usage information and exits.
  */
 static void usage(void) {
     fprintf(stderr, "Usage: mdu [-j number_of_threads] file ...\n");
@@ -20,54 +21,63 @@ static void usage(void) {
 }
 
 /**
- * @brief Entry point for the mdu program.
+ * @brief Parses the number of threads from command-line arguments.
  *
- * Parses command-line arguments, determines the number of threads to use,
- * and calculates disk usage for each specified file or directory.
- *
- * @param argc Argument count.
- * @param argv Argument vector.
- * @return EXIT_SUCCESS on success, exits on error.
+ * @param argc Argument count
+ * @param argv Argument vector
+ * @return Number of threads to use (default 1)
  */
-int main(int argc, char** argv) {
-
+static int parse_num_threads(int argc, char** argv) {
     int num_threads = 1;
+    int opt;
 
-    int flag;
-    while ((flag = getopt(argc, argv, "j:")) != -1) {
-        switch (flag) {
+    while ((opt = getopt(argc, argv, "j:")) != -1) {
+        switch (opt) {
         case 'j':
             num_threads = atoi(optarg);
             if (num_threads < 1) {
-                fprintf(stderr, "Number of specified threads must be greater than 1\n");
+                fprintf(stderr, "Number of threads must be greater than 0\n");
                 usage();
             }
             break;
         default:
             usage();
-            break;
         }
     }
+    return num_threads;
+}
+
+/**
+ * @brief Main entry point.
+ *
+ * Processes command-line arguments and calculates disk usage for each specified file.
+ */
+int main(int argc, char** argv) {
+    int num_threads = parse_num_threads(argc, argv);
 
     if (optind >= argc) {
-        fprintf(stderr, "No files specified");
+        fprintf(stderr, "No files specified\n");
         usage();
     }
 
+    int had_access_error = 0;
+
     for (int i = optind; i < argc; i++) {
-        char* filename = argv[i];
         size_t total_size = 0;
+        int file_had_error = 0;
 
         if (num_threads > 1) {
-            total_size = process_directory(filename,  num_threads);
+            process_directory(argv[i], num_threads, &total_size, &file_had_error);
         } else {
-            total_size = calculate_dir_size(filename);
+            calculate_dir_size(argv[i], &total_size, &file_had_error);
         }
-        
 
-        size_t blocks = total_size;
-        printf("%zu\t%s\n", blocks, filename);
+        printf("%zu\t%s\n", total_size, argv[i]);
+
+        if (file_had_error) {
+            had_access_error = 1;
+        }
     }
 
-    return EXIT_SUCCESS;
+    return had_access_error ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -1,263 +1,150 @@
 /**
  * @file work_queue.c
  * @brief Implementation of a thread-safe work queue for string paths.
- *
- * This file provides functions for creating, managing, and destroying a thread-safe
- * work queue, which is used to coordinate producer and consumer threads in parallel
- * directory traversal.
  */
 
 #include "work_queue.h"
-#include <stdatomic.h>
-#include <unistd.h> // For usleep
+#include <errno.h>
 
-/**
- * @brief Frees the memory allocated for the work queue structure.
- *
- * @param queue Pointer to the work queue to free.
- */
-static void free_pq(work_queue_t* queue);
+#define INITIAL_CAPACITY 1024
 
 /**
  * @struct work_queue
  * @brief Internal structure representing the work queue.
- *
- * This structure holds the queue buffer, synchronization primitives, and thread counters.
  */
 struct work_queue {
-    char** paths;
-    size_t capacity;
-    size_t size;
-    size_t front;
-
-    pthread_mutex_t mutex;
-    pthread_cond_t condition;
-
-    int active_threads;
-    int total_threads;
-    bool terminate;
-    atomic_int outstanding; /* tracks pushed items not yet finished */
+    char** paths; // Circular buffer of path strings
+    int front; // Index of first element
+    int rear; // Index of next free slot
+    int size; // Current number of elements
+    int capacity; // Buffer capacity
+    int outstanding; // Number of unfinished tasks
+    pthread_mutex_t mutex; // Protects all queue fields
+    pthread_cond_t cond; // Signals queue state changes
 };
 
 /**
- * @brief Creates and initializes a new work queue.
- *
- * Allocates memory for the queue and its buffer, and initializes synchronization primitives.
- *
- * @return Pointer to the new work queue, or NULL on failure.
+ * @brief Frees remaining paths in the queue (helper function).
  */
+static void free_remaining_paths(work_queue_t* queue) {
+    for (int i = 0; i < queue->size; i++) {
+        free(queue->paths[(queue->front + i) % queue->capacity]);
+    }
+    free(queue->paths);
+}
+
 work_queue_t* work_queue_create(void) {
     work_queue_t* queue = malloc(sizeof(work_queue_t));
     if (!queue) {
-        fprintf(stderr, "Could not allocate memory for queue\n");
-        return NULL;
+        perror("malloc");
+        exit(EXIT_FAILURE);
     }
 
-    queue->capacity = 1024;
-    queue->paths = malloc(queue->capacity * sizeof(char*));
+    queue->capacity = INITIAL_CAPACITY;
+    queue->paths = malloc(sizeof(char*) * queue->capacity);
     if (!queue->paths) {
-        fprintf(stderr, "Could not allocate memory for paths\n");
+        perror("malloc");
         free(queue);
-        return NULL;
+        exit(EXIT_FAILURE);
     }
 
-    queue->size = 0;
-    queue->front = 0;
+    queue->front = queue->rear = queue->size = 0;
+    queue->outstanding = 0;
 
     if (pthread_mutex_init(&queue->mutex, NULL) != 0) {
-        perror("queue");
-        free_pq(queue);
-        return NULL;
+        perror("pthread_mutex_init");
+        free(queue->paths);
+        free(queue);
+        exit(EXIT_FAILURE);
     }
 
-    if (pthread_cond_init(&queue->condition, NULL) != 0) {
-        perror("queue");
+    if (pthread_cond_init(&queue->cond, NULL) != 0) {
+        perror("pthread_cond_init");
         pthread_mutex_destroy(&queue->mutex);
-        free_pq(queue);
-        return NULL;
+        free(queue->paths);
+        free(queue);
+        exit(EXIT_FAILURE);
     }
-
-    queue->active_threads = 0;
-    queue->total_threads = 0;
-    queue->terminate = false;
-    atomic_init(&queue->outstanding, 0);
 
     return queue;
 }
 
-/**
- * @brief Pushes a new path onto the work queue.
- *
- * Expands the buffer if necessary and signals waiting threads.
- *
- * @param queue Pointer to the work queue.
- * @param path String path to add (copied internally).
- */
 void work_queue_push(work_queue_t* queue, const char* path) {
-    if (!queue || !path)
-        return;
-
     pthread_mutex_lock(&queue->mutex);
 
-    int retries = 0;
-    while (queue->size >= queue->capacity && retries < 10) {
-        const size_t temp_capacity = queue->capacity * 2;
-        if (temp_capacity < queue->capacity) { // Overflow check
-            fprintf(stderr, "Capacity overflow\n");
+    // Expand buffer if full
+    if (queue->size == queue->capacity) {
+        int new_capacity = queue->capacity * 2;
+        char** new_paths = malloc(sizeof(char*) * new_capacity);
+        if (!new_paths) {
+            perror("malloc");
             pthread_mutex_unlock(&queue->mutex);
-            return;
+            exit(EXIT_FAILURE);
         }
-        char** temp = malloc(temp_capacity * sizeof(char*));
-        if (!temp) {
-            retries++;
-            usleep(1000 * retries); // Exponential backoff
-            continue;
+
+        // Copy elements in order to new buffer
+        for (int i = 0; i < queue->size; i++) {
+            new_paths[i] = queue->paths[(queue->front + i) % queue->capacity];
         }
-        // Copy elements in correct order
-        for (size_t i = 0; i < queue->size; ++i) {
-            temp[i] = queue->paths[(queue->front + i) % queue->capacity];
-        }
+
         free(queue->paths);
-        queue->paths = temp;
-        queue->capacity = temp_capacity;
+        queue->paths = new_paths;
+        queue->capacity = new_capacity;
         queue->front = 0;
-        break;
+        queue->rear = queue->size;
     }
 
-    if (retries >= 10) {
-        fprintf(stderr, "Failed to realloc after 10 retries, skipping push\n");
-        pthread_mutex_unlock(&queue->mutex);
-        return;
-    }
-
-    const size_t index = (queue->front + queue->size) % queue->capacity;
-    char* dup = strdup(path);
-    if (!dup) {
+    // Add new path
+    queue->paths[queue->rear] = strdup(path);
+    if (!queue->paths[queue->rear]) {
         perror("strdup");
         pthread_mutex_unlock(&queue->mutex);
-        return;
+        exit(EXIT_FAILURE);
     }
-    queue->paths[index] = dup;
-    queue->size++;
-    atomic_fetch_add(&queue->outstanding, 1);
 
-    pthread_cond_signal(&queue->condition);
+    queue->rear = (queue->rear + 1) % queue->capacity;
+    queue->size++;
+    queue->outstanding++;
+
+    pthread_cond_signal(&queue->cond);
     pthread_mutex_unlock(&queue->mutex);
 }
 
-/**
- * @brief Pops a path from the work queue for processing.
- *
- * Waits if the queue is empty and not terminating. Increments active thread count.
- *
- * @param queue Pointer to the work queue.
- * @return Dynamically allocated string path, or NULL if terminating.
- */
 char* work_queue_pop(work_queue_t* queue) {
-    if (!queue) {
-        return NULL;
-    }
-
     pthread_mutex_lock(&queue->mutex);
 
-    while (queue->size == 0 && !queue->terminate) {
-        pthread_cond_wait(&queue->condition, &queue->mutex);
-    }
-
-    if (queue->size == 0) {
-        pthread_mutex_unlock(&queue->mutex);
-        return NULL;
+    // Wait for work or termination
+    while (queue->size == 0) {
+        if (queue->outstanding == 0) {
+            pthread_cond_broadcast(&queue->cond);
+            pthread_mutex_unlock(&queue->mutex);
+            return NULL;
+        }
+        pthread_cond_wait(&queue->cond, &queue->mutex);
     }
 
     char* path = queue->paths[queue->front];
     queue->front = (queue->front + 1) % queue->capacity;
     queue->size--;
-    queue->active_threads++;
 
     pthread_mutex_unlock(&queue->mutex);
-
     return path;
 }
 
-/**
- * @brief Signals that a thread has finished processing a path.
- *
- * Decrements the active thread count and signals termination if no threads or items remain.
- *
- * @param queue Pointer to the work queue.
- */
 void work_queue_task_done(work_queue_t* queue) {
-    if (!queue)
-        return;
-
-    int prev = atomic_fetch_sub(&queue->outstanding, 1);
-
     pthread_mutex_lock(&queue->mutex);
-    queue->active_threads--;
+    queue->outstanding--;
 
-    if (prev - 1 == 0) {
-        queue->terminate = true;
-        pthread_cond_broadcast(&queue->condition);
+    if (queue->outstanding == 0) {
+        pthread_cond_broadcast(&queue->cond);
     }
 
     pthread_mutex_unlock(&queue->mutex);
 }
 
-/**
- * @brief Checks if the work queue is empty.
- *
- * @param queue Pointer to the work queue.
- * @return true if empty, false otherwise.
- */
-bool work_queue_is_empty(work_queue_t* queue) {
-    if (!queue)
-        return true;
-
-    pthread_mutex_lock(&queue->mutex);
-
-    bool is_empty = (queue->size == 0);
-    pthread_mutex_unlock(&queue->mutex);
-
-    return is_empty;
-}
-
-/**
- * @brief Destroys the work queue and frees all associated memory.
- *
- * Frees all buffered paths, destroys synchronization primitives, and releases the queue.
- *
- * @param queue Pointer to the work queue.
- */
 void work_queue_destroy(work_queue_t* queue) {
-    if (!queue) {
-        return;
-    }
-
-    pthread_mutex_lock(&queue->mutex);
-
-    for (size_t i = 0; i < queue->size; i++) {
-        size_t index = (queue->front + i) % queue->capacity;
-        free(queue->paths[index]);
-    }
-
-    free(queue->paths);
-
-    pthread_mutex_unlock(&queue->mutex);
     pthread_mutex_destroy(&queue->mutex);
-    pthread_cond_destroy(&queue->condition);
-
-    free(queue);
-}
-
-/**
- * @brief Frees the memory allocated for the work queue structure (helper).
- *
- * @param queue Pointer to the work queue to free.
- */
-static void free_pq(work_queue_t* queue) {
-    if (!queue)
-        return;
-    if (queue->paths)
-        free(queue->paths);
+    pthread_cond_destroy(&queue->cond);
+    free_remaining_paths(queue);
     free(queue);
 }

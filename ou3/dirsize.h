@@ -1,18 +1,9 @@
 #ifndef DIRSIZE_H
 #define DIRSIZE_H
 
-#include <dirent.h>
-#include <errno.h>
-#include <limits.h>
-#include <pthread.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#include <stddef.h>
 
-size_t calculate_dir_size(const char* path);
-size_t process_directory(const char* path, int num_threads);
+void calculate_dir_size(const char* path, size_t* result, int* had_access_error);
+void process_directory(const char* path, int num_threads, size_t* result, int* had_access_error);
 
 #endif // !DIRSIZE_H
