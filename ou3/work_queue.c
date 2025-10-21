@@ -24,8 +24,7 @@ struct work_queue {
 };
 
 /**
- * @brief Frees remaining paths in the queue (helper function).
- * @param queue The work queue.
+ * @brief Frees remaining paths in the queue.
  */
 static void free_remaining_paths(work_queue_t *queue) {
     for (int i = 0; i < queue->size; i++) {
@@ -38,7 +37,11 @@ static void free_remaining_paths(work_queue_t *queue) {
 
 /**
  * @brief Creates a new work queue.
- * @return Pointer to the created queue, exits on failure.
+ *
+ * Allocates and initializes a thread-safe work queue for managing path strings.
+ * Sets up the circular buffer, mutex, and condition variable.
+ * If any allocation or initialization fails, the program exits with an error.
+ * Returns a pointer to the newly created queue.
  */
 work_queue_t *queue_create(void) {
     work_queue_t *queue = malloc(sizeof(work_queue_t));
@@ -78,8 +81,10 @@ work_queue_t *queue_create(void) {
 
 /**
  * @brief Adds a path to the work queue.
- * @param queue Work queue.
- * @param path Path string (will be copied).
+ *
+ * Copies the given path string and adds it to the queue.
+ * If the queue is full, it dynamically expands the buffer to accommodate more paths.
+ * Signals waiting threads that new work is available.
  */
 void queue_push(work_queue_t *queue, const char *path) {
     pthread_mutex_lock(&queue->mutex);
@@ -121,8 +126,9 @@ void queue_push(work_queue_t *queue, const char *path) {
 
 /**
  * @brief Retrieves a path from the work queue.
- * @param queue Work queue.
- * @return Dynamically allocated path string, or NULL if done.
+ *
+ * Waits if the queue is empty but there are outstanding tasks.
+ * Returns a dynamically allocated path string for processing, or NULL if all tasks are done.
  */
 char *queue_pop(work_queue_t *queue) {
     pthread_mutex_lock(&queue->mutex);
@@ -146,7 +152,9 @@ char *queue_pop(work_queue_t *queue) {
 
 /**
  * @brief Signals completion of a task.
- * @param queue Work queue.
+ *
+ * Decrements the count of outstanding tasks in the queue.
+ * If all tasks are completed, it wakes up any threads waiting for work.
  */
 void queue_task_done(work_queue_t *queue) {
     pthread_mutex_lock(&queue->mutex);
@@ -161,7 +169,6 @@ void queue_task_done(work_queue_t *queue) {
 
 /**
  * @brief Destroys the work queue and frees resources.
- * @param queue Work queue.
  */
 void queue_destroy(work_queue_t *queue) {
     pthread_mutex_destroy(&queue->mutex);

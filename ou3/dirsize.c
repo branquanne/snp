@@ -36,10 +36,8 @@ typedef struct {
  * @param error_mutex Mutex for error flag.
  * @param queue Work queue.
  */
-static void free_and_destroy_mutex(pthread_t *threads, thread_args_t *args,
-                                   pthread_mutex_t *size_mutex,
-                                   pthread_mutex_t *error_mutex,
-                                   work_queue_t *queue) {
+static void free_and_destroy_mutex(pthread_t *threads, thread_args_t *args, pthread_mutex_t *size_mutex,
+                                   pthread_mutex_t *error_mutex, work_queue_t *queue) {
     free(threads);
     free(args);
     pthread_mutex_destroy(size_mutex);
@@ -47,17 +45,10 @@ static void free_and_destroy_mutex(pthread_t *threads, thread_args_t *args,
     queue_destroy(queue);
 }
 
-/* --- EXTERNAL --- */
-
 /**
  * @brief Reports a file/directory access error in a thread-safe way.
- * @param path The path that caused the error.
- * @param had_error Pointer to the error flag.
- * @param error_mutex Mutex for the error flag (may be NULL for
- * single-threaded).
  */
-static void report_access_error(const char *path, int *had_error,
-                                pthread_mutex_t *error_mutex) {
+static void report_access_error(const char *path, int *had_error, pthread_mutex_t *error_mutex) {
     perror(path);
     if (error_mutex) {
         pthread_mutex_lock(error_mutex);
@@ -68,10 +59,16 @@ static void report_access_error(const char *path, int *had_error,
     }
 }
 
+/* --- EXTERNAL --- */
+
 /**
  * @brief Worker thread function for parallel directory traversal.
- * @param arg Pointer to thread_args_t.
- * @return NULL
+ * Each worker repeatedly pops a path from the shared work queue.
+ * For each path, it checks if it is a file or directory:
+ *   - If a file, it adds its size to a local counter.
+ *   - If a directory, it opens the directory and pushes all entries onto the queue.
+ * Access errors are reported and flagged. When the queue is empty, the worker
+ * adds its local size to the shared total size in a thread-safe way and exits.
  */
 static void *worker_func(void *arg) {
     thread_args_t *args = (thread_args_t *)arg;
@@ -85,8 +82,7 @@ static void *worker_func(void *arg) {
 
         struct stat file_stat;
         if (lstat(path, &file_stat) == -1) {
-            report_access_error(path, args->had_access_error,
-                                args->error_mutex);
+            report_access_error(path, args->had_access_error, args->error_mutex);
             free(path);
             queue_task_done(args->queue);
             continue;
@@ -97,8 +93,7 @@ static void *worker_func(void *arg) {
         if (S_ISDIR(file_stat.st_mode)) {
             DIR *dir = opendir(path);
             if (!dir) {
-                report_access_error(path, args->had_access_error,
-                                    args->error_mutex);
+                report_access_error(path, args->had_access_error, args->error_mutex);
                 free(path);
                 queue_task_done(args->queue);
                 continue;
@@ -106,27 +101,22 @@ static void *worker_func(void *arg) {
 
             struct dirent *entry;
             while ((entry = readdir(dir)) != NULL) {
-                if (strcmp(entry->d_name, ".") == 0 ||
-                    strcmp(entry->d_name, "..") == 0) {
+                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
                     continue;
                 }
 
                 char full_path[PATH_MAX];
-                int ret = snprintf(full_path, sizeof(full_path), "%s/%s", path,
-                                   entry->d_name);
+                int ret = snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
                 if (ret >= (int)sizeof(full_path)) {
-                    fprintf(stderr, "Filepath too long: %s/%s\n", path,
-                            entry->d_name);
-                    report_access_error("", args->had_access_error,
-                                        args->error_mutex);
+                    fprintf(stderr, "Filepath too long: %s/%s\n", path, entry->d_name);
+                    report_access_error("", args->had_access_error, args->error_mutex);
                     continue;
                 }
                 queue_push(args->queue, full_path);
             }
 
             if (closedir(dir) == -1) {
-                report_access_error(path, args->had_access_error,
-                                    args->error_mutex);
+                report_access_error(path, args->had_access_error, args->error_mutex);
             }
         }
 
@@ -143,9 +133,11 @@ static void *worker_func(void *arg) {
 
 /**
  * @brief Recursively calculates the disk usage of a path (single-threaded).
- * @param path Path to file or directory.
- * @param result Pointer to store the result (in 512-byte blocks).
- * @param had_access_error Pointer to int set to 1 if any access error occurs.
+ * This function starts at the given path and checks if it is a file or directory:
+ *   - If a file, it returns its size.
+ *   - If a directory, it opens the directory and recursively calls itself for each entry.
+ * The sizes of all files and subdirectories are accumulated.
+ * Any access errors are reported and flagged.
  */
 void get_size(const char *path, size_t *result, int *had_access_error) {
     struct stat file_stat;
@@ -171,14 +163,12 @@ void get_size(const char *path, size_t *result, int *had_access_error) {
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
-        if (strcmp(entry->d_name, ".") == 0 ||
-            strcmp(entry->d_name, "..") == 0) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
 
         char full_path[PATH_MAX];
-        int ret = snprintf(full_path, sizeof(full_path), "%s/%s", path,
-                           entry->d_name);
+        int ret = snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
         if (ret >= (int)sizeof(full_path)) {
             fprintf(stderr, "Filepath too long: %s/%s\n", path, entry->d_name);
             *had_access_error = 1;
@@ -199,13 +189,13 @@ void get_size(const char *path, size_t *result, int *had_access_error) {
 
 /**
  * @brief Calculates the disk usage of a path using multiple threads.
- * @param path Path to file or directory.
- * @param num_threads Number of threads to use.
- * @param result Pointer to store the result (in 512-byte blocks).
- * @param had_access_error Pointer to int set to 1 if any access error occurs.
+ * This function sets up a work queue and pushes the initial path onto it.
+ * It initializes mutexes and creates the specified number of worker threads.
+ * Each thread processes files and directories from the queue in parallel.
+ * After all threads finish, it cleans up resources and returns the total size.
+ * Any access errors encountered are reported and flagged.
  */
-void get_size_parallel(const char *path, int num_threads, size_t *result,
-                       int *had_access_error) {
+void get_size_parallel(const char *path, int num_threads, size_t *result, int *had_access_error) {
     work_queue_t *queue = queue_create();
     queue_push(queue, path);
 
@@ -244,8 +234,7 @@ void get_size_parallel(const char *path, int num_threads, size_t *result,
         int ret = pthread_create(&threads[i], NULL, worker_func, &args[i]);
         if (ret != 0) {
             fprintf(stderr, "pthread_create: %s\n", strerror(ret));
-            free_and_destroy_mutex(threads, args, &size_mutex, &error_mutex,
-                                   queue);
+            free_and_destroy_mutex(threads, args, &size_mutex, &error_mutex, queue);
             exit(EXIT_FAILURE);
         }
     }
