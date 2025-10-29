@@ -23,11 +23,11 @@
  * Each target is built recursively, ensuring prerequisites are up-to-date before building.
  */
 
-void build_target(makefile* mf, const char* target, bool force_rebuild, bool silent);
-bool target_is_outdated(const char* target, const char** prereqs);
-void run_command(char** cmds, makefile* mf);
+void build_target(makefile *mf, const char *target, bool force_rebuild, bool silent);
+bool target_is_outdated(const char *target, const char **prereqs);
+void run_command(char **cmds, makefile *mf);
 static void usage(void);
-void cleanup_and_exit(makefile* mf, int exit_code);
+void cleanup_and_exit(makefile *mf, int exit_code);
 
 /**
  * @brief Main function for the mmake program.
@@ -40,10 +40,10 @@ void cleanup_and_exit(makefile* mf, int exit_code);
  * @param argv Array of command-line argument strings.
  * @return EXIT_SUCCESS if all targets are built successfully, EXIT_FAILURE otherwise.
  */
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     bool force_rebuild = false;
     bool silent = false;
-    char* mmakefile_name = "mmakefile";
+    char *mmakefile_name = "mmakefile";
 
     int flag;
     while ((flag = getopt(argc, argv, "f:Bs")) != -1) {
@@ -66,16 +66,15 @@ int main(int argc, char** argv) {
         }
     }
 
-    FILE* fp = fopen(mmakefile_name, "r");
+    FILE *fp = fopen(mmakefile_name, "r");
     if (!fp) {
         perror(mmakefile_name);
         exit(EXIT_FAILURE);
     }
 
-    makefile* mf = parse_makefile(fp);
+    makefile *mf = parse_makefile(fp);
     if (!mf) {
-        fprintf("Could not parse makefile: %s\n", mmakefile_name);
-        // perror(mmakefile_name);
+        fprintf(stderr, "Could not parse makefile: %s\n", mmakefile_name);
         fclose(fp);
         exit(EXIT_FAILURE);
     }
@@ -83,7 +82,7 @@ int main(int argc, char** argv) {
     fclose(fp);
 
     int n_targets = argc - optind;
-    const char* target;
+    const char *target;
     if (n_targets > 0) {
         for (int i = optind; i < argc; i++) {
             target = argv[i];
@@ -111,8 +110,8 @@ int main(int argc, char** argv) {
  * @param force_rebuild If true, always rebuild the target.
  * @param silent If true, suppress command output.
  */
-void build_target(makefile* mf, const char* target, bool force_rebuild, bool silent) {
-    rule* rule = makefile_rule(mf, target);
+void build_target(makefile *mf, const char *target, bool force_rebuild, bool silent) {
+    rule *rule = makefile_rule(mf, target);
     if (!rule) {
         struct stat source_stat;
         if (stat(target, &source_stat) != 0) {
@@ -122,7 +121,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
         return;
     }
 
-    const char** prereqs = rule_prereq(rule);
+    const char **prereqs = rule_prereq(rule);
     if (!prereqs) {
         fprintf(stderr, "Could not extract prerequisites for target: %s\n", target);
         cleanup_and_exit(mf, EXIT_FAILURE);
@@ -133,7 +132,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
 
     bool needs_rebuild = force_rebuild || target_is_outdated(target, prereqs);
     if (needs_rebuild) {
-        char** cmds = rule_cmd(rule);
+        char **cmds = rule_cmd(rule);
         if (!silent) {
             for (int i = 0; cmds[i]; i++) {
                 printf("%s", cmds[i]);
@@ -157,7 +156,7 @@ void build_target(makefile* mf, const char* target, bool force_rebuild, bool sil
  * @param prereqs Array of prerequisite file names.
  * @return true if the target is outdated or does not exist, false otherwise.
  */
-bool target_is_outdated(const char* target, const char** prereqs) {
+bool target_is_outdated(const char *target, const char **prereqs) {
     struct stat target_stat;
     if (stat(target, &target_stat) != 0) {
         return true;
@@ -184,7 +183,7 @@ bool target_is_outdated(const char* target, const char** prereqs) {
  * @param cmds Array of command arguments.
  * @param mf Pointer to the parsed makefile.
  */
-void run_command(char** cmds, makefile* mf) {
+void run_command(char **cmds, makefile *mf) {
     pid_t pid = fork();
 
     if (pid == -1) {
@@ -192,13 +191,13 @@ void run_command(char** cmds, makefile* mf) {
         cleanup_and_exit(mf, EXIT_FAILURE);
     }
     if (pid == 0) {
-        execvp(cmds[0], (char* const*)cmds);
+        execvp(cmds[0], (char *const *)cmds);
         perror(cmds[0]);
         cleanup_and_exit(mf, EXIT_FAILURE);
     } else {
         int status;
         if (wait(&status) == -1) {
-            perror("Wait");
+            perror("Wait failure");
             cleanup_and_exit(mf, EXIT_FAILURE);
         }
         if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
@@ -225,7 +224,7 @@ static void usage(void) {
  * @param mf Pointer to the parsed makefile.
  * @param exit_code Exit code to use.
  */
-void cleanup_and_exit(makefile* mf, int exit_code) {
+void cleanup_and_exit(makefile *mf, int exit_code) {
     if (mf) {
         makefile_del(mf);
     }
