@@ -6,6 +6,8 @@
  * files or directories. It supports parallel traversal using multiple threads.
  *
  * Usage: mdu [-j number_of_threads] file ...
+ * @date 2025-11-19
+ * @author Bran Mjöberg Quanne
  */
 
 #include "dirsize.h"

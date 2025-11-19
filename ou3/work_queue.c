@@ -1,10 +1,14 @@
 /**
  * @file work_queue.c
  * @brief Implementation of a thread-safe work queue for string paths.
+ * @date 2025-11-19
+ * @author Bran Mjöberg Quanne
  */
 
 #include "work_queue.h"
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
 
 /* --- INTERNAL --- */
 
@@ -61,16 +65,22 @@ work_queue_t *queue_create(void) {
     queue->front = queue->rear = queue->size = 0;
     queue->outstanding = 0;
 
-    if (pthread_mutex_init(&queue->mutex, NULL) != 0) {
-        perror("pthread_mutex_init");
+    int errnum = pthread_mutex_init(&queue->mutex, NULL);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_init: %s\n", strerror(errnum));
         free(queue->paths);
         free(queue);
         exit(EXIT_FAILURE);
     }
 
-    if (pthread_cond_init(&queue->cond, NULL) != 0) {
-        perror("pthread_cond_init");
-        pthread_mutex_destroy(&queue->mutex);
+    errnum = pthread_cond_init(&queue->cond, NULL);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_cond_init: %s\n", strerror(errnum));
+        errnum = pthread_mutex_destroy(&queue->mutex);
+        if (errnum != 0) {
+            fprintf(stderr, "pthread_mutex_destroy: %s\n", strerror(errnum));
+            exit(EXIT_FAILURE);
+        }
         free(queue->paths);
         free(queue);
         exit(EXIT_FAILURE);
@@ -87,14 +97,14 @@ work_queue_t *queue_create(void) {
  * Signals waiting threads that new work is available.
  */
 void queue_push(work_queue_t *queue, const char *path) {
-    pthread_mutex_lock(&queue->mutex);
+    safe_lock(&queue->mutex);
 
     if (queue->size == queue->capacity) {
         int new_capacity = queue->capacity * 2;
         char **new_paths = malloc(sizeof(char *) * new_capacity);
         if (!new_paths) {
             perror("malloc");
-            pthread_mutex_unlock(&queue->mutex);
+            safe_unlock(&queue->mutex);
             exit(EXIT_FAILURE);
         }
 
@@ -112,7 +122,7 @@ void queue_push(work_queue_t *queue, const char *path) {
     queue->paths[queue->rear] = strdup(path);
     if (!queue->paths[queue->rear]) {
         perror("strdup");
-        pthread_mutex_unlock(&queue->mutex);
+        safe_unlock(&queue->mutex);
         exit(EXIT_FAILURE);
     }
 
@@ -120,8 +130,12 @@ void queue_push(work_queue_t *queue, const char *path) {
     queue->size++;
     queue->outstanding++;
 
-    pthread_cond_signal(&queue->cond);
-    pthread_mutex_unlock(&queue->mutex);
+    int errnum = pthread_cond_signal(&queue->cond);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_cond_signal: %s\n", strerror(errnum));
+        exit(EXIT_FAILURE);
+    }
+    safe_unlock(&queue->mutex);
 }
 
 /**
@@ -131,22 +145,30 @@ void queue_push(work_queue_t *queue, const char *path) {
  * Returns a dynamically allocated path string for processing, or NULL if all tasks are done.
  */
 char *queue_pop(work_queue_t *queue) {
-    pthread_mutex_lock(&queue->mutex);
+    safe_lock(&queue->mutex);
 
     while (queue->size == 0) {
         if (queue->outstanding == 0) {
-            pthread_cond_broadcast(&queue->cond);
-            pthread_mutex_unlock(&queue->mutex);
+            int errnum = pthread_cond_broadcast(&queue->cond);
+            if (errnum != 0) {
+                fprintf(stderr, "pthread_cond_broadcast: %s\n", strerror(errnum));
+                exit(EXIT_FAILURE);
+            }
+            safe_unlock(&queue->mutex);
             return NULL;
         }
-        pthread_cond_wait(&queue->cond, &queue->mutex);
+        int errnum = pthread_cond_wait(&queue->cond, &queue->mutex);
+        if (errnum != 0) {
+            fprintf(stderr, "pthread_cond_wait: %s\n", strerror(errnum));
+            exit(EXIT_FAILURE);
+        }
     }
 
     char *path = queue->paths[queue->front];
     queue->front = (queue->front + 1) % queue->capacity;
     queue->size--;
 
-    pthread_mutex_unlock(&queue->mutex);
+    safe_unlock(&queue->mutex);
     return path;
 }
 
@@ -157,22 +179,63 @@ char *queue_pop(work_queue_t *queue) {
  * If all tasks are completed, it wakes up any threads waiting for work.
  */
 void queue_task_done(work_queue_t *queue) {
-    pthread_mutex_lock(&queue->mutex);
+    safe_lock(&queue->mutex);
     queue->outstanding--;
 
     if (queue->outstanding == 0) {
-        pthread_cond_broadcast(&queue->cond);
+        int errnum = pthread_cond_broadcast(&queue->cond);
+        if (errnum != 0) {
+            fprintf(stderr, "pthread_cond_broadcast: %s\n", strerror(errnum));
+            exit(EXIT_FAILURE);
+        }
     }
 
-    pthread_mutex_unlock(&queue->mutex);
+    safe_unlock(&queue->mutex);
 }
 
 /**
  * @brief Destroys the work queue and frees resources.
  */
 void queue_destroy(work_queue_t *queue) {
-    pthread_mutex_destroy(&queue->mutex);
-    pthread_cond_destroy(&queue->cond);
+    int errnum = pthread_mutex_destroy(&queue->mutex);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_destroy: %s\n", strerror(errnum));
+        exit(EXIT_FAILURE);
+    }
+
+    errnum = pthread_cond_destroy(&queue->cond);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_cond_destroy: %s\n", strerror(errnum));
+        exit(EXIT_FAILURE);
+    }
     free_remaining_paths(queue);
     free(queue);
+}
+
+/**
+ * @brief Safely lock a pthread mutex.
+ *
+ * This helper wraps pthread_mutex_lock and checks the return value.
+ * On failure it prints the error number and terminates the process.
+ */
+void safe_lock(pthread_mutex_t *m) {
+    int errnum = pthread_mutex_lock(m);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_lock: %s\n", strerror(errnum));
+        exit(EXIT_FAILURE);
+    }
+}
+
+/**
+ * @brief Safely unlock a pthread mutex.
+ *
+ * This helper wraps pthread_mutex_unlock and checks the return value.
+ * On failure it prints the errornumber and terminates the process.
+ */
+void safe_unlock(pthread_mutex_t *m) {
+    int errnum = pthread_mutex_unlock(m);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_unlock: %s\n", strerror(errnum));
+        exit(EXIT_FAILURE);
+    }
 }

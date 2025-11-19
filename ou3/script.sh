@@ -1,8 +1,14 @@
 #!/bin/bash
 
+ # @file script.sh
+ # @brief Benchmark script that runs "./mdu -j N /pkg/" across thread counts and logs runtimes.
+ # @author Bran Mjöberg Quanne
+ # @date 2025-11-19
+
+
 EXECUTABLE="./mdu"
 
-DIRECTORY="../../"
+DIRECTORY="/pkg/"
 
 OUTPUT_FILE="performance_results.txt"
 

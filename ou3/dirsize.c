@@ -1,6 +1,8 @@
 /**
  * @file dirsize.c
  * @brief Directory size calculation with optional parallel traversal.
+ * @date 2025-11-19
+ * @author Bran Mjöberg Quanne
  */
 
 #include "dirsize.h"
@@ -40,8 +42,20 @@ static void free_and_destroy_mutex(pthread_t *threads, thread_args_t *args, pthr
                                    pthread_mutex_t *error_mutex, work_queue_t *queue) {
     free(threads);
     free(args);
-    pthread_mutex_destroy(size_mutex);
-    pthread_mutex_destroy(error_mutex);
+
+    int errnum = pthread_mutex_destroy(size_mutex);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_destroy: %s\n", strerror(errnum));
+        queue_destroy(queue);
+        exit(EXIT_FAILURE);
+    }
+
+    errnum = pthread_mutex_destroy(error_mutex);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_destroy: %s\n", strerror(errnum));
+        queue_destroy(queue);
+        exit(EXIT_FAILURE);
+    }
     queue_destroy(queue);
 }
 
@@ -51,9 +65,9 @@ static void free_and_destroy_mutex(pthread_t *threads, thread_args_t *args, pthr
 static void report_access_error(const char *path, int *had_error, pthread_mutex_t *error_mutex) {
     perror(path);
     if (error_mutex) {
-        pthread_mutex_lock(error_mutex);
+        safe_lock(error_mutex);
         *had_error = 1;
-        pthread_mutex_unlock(error_mutex);
+        safe_unlock(error_mutex);
     } else {
         *had_error = 1;
     }
@@ -107,7 +121,7 @@ static void *worker_func(void *arg) {
 
                 char full_path[PATH_MAX];
                 int ret = snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-                if (ret >= (int)sizeof(full_path)) {
+                if (ret >= (int)sizeof(full_path) || ret < 0) {
                     fprintf(stderr, "Filepath too long: %s/%s\n", path, entry->d_name);
                     report_access_error("", args->had_access_error, args->error_mutex);
                     continue;
@@ -124,9 +138,9 @@ static void *worker_func(void *arg) {
         queue_task_done(args->queue);
     }
 
-    pthread_mutex_lock(args->size_mutex);
+    safe_lock(args->size_mutex);
     *(args->total_size) += local_size;
-    pthread_mutex_unlock(args->size_mutex);
+    safe_unlock(args->size_mutex);
 
     return NULL;
 }
@@ -202,14 +216,16 @@ void get_size_parallel(const char *path, int num_threads, size_t *result, int *h
     size_t total_size = 0;
     pthread_mutex_t size_mutex, error_mutex;
 
-    if (pthread_mutex_init(&size_mutex, NULL) != 0) {
-        perror("pthread_mutex_init");
+    int errnum = pthread_mutex_init(&size_mutex, NULL);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_init: %s\n", strerror(errnum));
         queue_destroy(queue);
         exit(EXIT_FAILURE);
     }
 
-    if (pthread_mutex_init(&error_mutex, NULL) != 0) {
-        perror("pthread_mutex_init");
+    errnum = pthread_mutex_init(&error_mutex, NULL);
+    if (errnum != 0) {
+        fprintf(stderr, "pthread_mutex_init: %s\n", strerror(errnum));
         pthread_mutex_destroy(&size_mutex);
         queue_destroy(queue);
         exit(EXIT_FAILURE);
@@ -231,16 +247,20 @@ void get_size_parallel(const char *path, int num_threads, size_t *result, int *h
         args[i].had_access_error = had_access_error;
         args[i].error_mutex = &error_mutex;
 
-        int ret = pthread_create(&threads[i], NULL, worker_func, &args[i]);
-        if (ret != 0) {
-            fprintf(stderr, "pthread_create: %s\n", strerror(ret));
+        int errnum = pthread_create(&threads[i], NULL, worker_func, &args[i]);
+        if (errnum != 0) {
+            fprintf(stderr, "pthread_create: %s\n", strerror(errnum));
             free_and_destroy_mutex(threads, args, &size_mutex, &error_mutex, queue);
             exit(EXIT_FAILURE);
         }
     }
 
     for (int i = 0; i < num_threads; i++) {
-        pthread_join(threads[i], NULL);
+
+        int errnum = pthread_join(threads[i], NULL);
+        if (errnum != 0) {
+            fprintf(stderr, "pthread_join: %s\n", strerror(errnum));
+        }
     }
 
     free_and_destroy_mutex(threads, args, &size_mutex, &error_mutex, queue);
